@@ -1,0 +1,20 @@
+{
+  "name": "actionplan-wizard",
+  "version": "0.1.0",
+  "description": "Terminal UI wizard that generates an Actionplan checklist",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "actionplan-wizard": "bin/actionplan-wizard.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node bin/actionplan-wizard.js"
+  },
+  "dependencies": {
+    "blessed": "^0.1.81",
+    "clipboardy": "^4.0.0"
+  }
+}
