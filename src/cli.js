@@ -4,7 +4,7 @@
 const blessed = require('blessed');
 
 const DONE_SYMBOL = '✓';
-const IN_PROGRESS_SYMBOL = '●';
+const IN_PROGRESS_SYMBOL = '■';
 const EMPTY_SYMBOL = '□';
 
 function clamp(value, min, max) {
