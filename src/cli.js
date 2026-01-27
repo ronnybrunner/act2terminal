@@ -3,7 +3,7 @@
 
 const blessed = require('blessed');
 
-const DEFAULT_COUNT = 5;
+const DEFAULT_COUNT = 2;
 const DEFAULT_PRESET = 'squares';
 const DEFAULT_HEADER_STYLE = 'markdown';
 
@@ -23,7 +23,7 @@ const HEADER_STYLES = {
   plain: { label: 'Actionplan (YYYY-MM-DD HH:mm)', prefix: 'Actionplan' },
 };
 
-const HELP_LINE = 'Tab=Menu, F4=Copy, F5=Print, ↑↓=Select, Enter=Save, F9=In progress, F10=Done, ESC=Exit';
+const HELP_LINE = 'Tab=Menu, F4=Copy, F5=Print, ↑↓=Select, Enter=Next, F9=In progress, F10=Done, ESC=Exit';
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -99,9 +99,11 @@ function renderScreen(state) {
   const lines = state.todos.map((todo, idx) => {
     const token = getToken(state, tokens, idx);
     const hasText = Boolean(todo.text && todo.text.trim() !== '');
-    const text = hasText ? todo.text : '{gray-fg}<enter todo...>{/gray-fg}';
+    const text = hasText ? todo.text : '{gray-fg}<type todo...>{/gray-fg}';
+    const cursor = idx === state.activeIndex ? '▏' : '';
+    const uiText = cursor ? `${text}${cursor}` : text;
     const marker = idx === state.activeIndex ? '▸' : ' ';
-    const line = `${marker} [${token}] ${text}`;
+    const line = `${marker} [${token}] ${uiText}`;
     return idx === state.activeIndex ? `{inverse}${line}{/inverse}` : line;
   });
   return [header, ...lines].join('\n');
@@ -205,7 +207,7 @@ function main() {
     top: 0,
     left: 0,
     width: '100%',
-    height: '100%-4',
+    height: '100%',
     border: 'line',
     scrollable: true,
     alwaysScroll: true,
@@ -214,25 +216,6 @@ function main() {
     vi: true,
     tags: true,
     scrollbar: { ch: ' ', inverse: true },
-  });
-
-  blessed.text({
-    parent: mainBox,
-    top: '100%-4',
-    left: 1,
-    content: 'Edit:',
-  });
-
-  const editor = blessed.textbox({
-    parent: mainBox,
-    top: '100%-3',
-    left: 0,
-    width: '100%',
-    height: 3,
-    border: 'line',
-    inputOnFocus: true,
-    keys: true,
-    mouse: true,
   });
 
   const status = blessed.box({
@@ -259,17 +242,18 @@ function main() {
     return `Active: ${state.activeIndex + 1}/${state.todos.length}, In progress: ${progress}, Preset: ${preset.label}`;
   }
 
-  function syncEditor() {
-    editor.setValue(state.todos[state.activeIndex].text || '');
-    editor.focus();
-  }
-
-  function saveEditorValue() {
-    state.todos[state.activeIndex].text = editor.getValue() || '';
+  function ensureActiveVisible() {
+    const lineIndex = state.activeIndex + 1;
+    if (typeof outputBox.scrollTo === 'function') {
+      outputBox.scrollTo(lineIndex);
+    } else if (typeof outputBox.setScroll === 'function') {
+      outputBox.setScroll(lineIndex);
+    }
   }
 
   function refreshScreen(message) {
     outputBox.setContent(renderScreen(state));
+    ensureActiveVisible();
     if (message) {
       setStatus(message);
     } else {
@@ -284,11 +268,9 @@ function main() {
   }
 
   function changeActive(delta) {
-    saveEditorValue();
     const next = clamp(state.activeIndex + delta, 0, state.todos.length - 1);
     if (next !== state.activeIndex) {
       state.activeIndex = next;
-      syncEditor();
       refreshScreen();
     } else {
       refreshScreen();
@@ -296,7 +278,6 @@ function main() {
   }
 
   function toggleActiveDone() {
-    saveEditorValue();
     const todo = state.todos[state.activeIndex];
     todo.status = todo.status === 'DONE' ? 'OPEN' : 'DONE';
     if (todo.status === 'DONE' && state.inProgressIndex === state.activeIndex) {
@@ -306,7 +287,6 @@ function main() {
   }
 
   function toggleInProgress() {
-    saveEditorValue();
     if (state.inProgressIndex === state.activeIndex) {
       state.inProgressIndex = null;
       refreshScreen('In progress: -');
@@ -317,7 +297,6 @@ function main() {
   }
 
   async function copyTodos() {
-    saveEditorValue();
     const plain = renderPlain(state);
     const plainForClipboard = plain.replace(/\n/g, '\r\n');
     const res = await writeClipboard(plainForClipboard);
@@ -331,7 +310,6 @@ function main() {
   }
 
   function printTodos() {
-    saveEditorValue();
     const plain = renderPlain(state);
     screen.destroy();
     process.stdout.write(`${plain}\n`);
@@ -414,14 +392,9 @@ function main() {
       mouse: true,
       hidden: true,
     });
-
-    menuBox.key(['enter'], () => {
-      handleMenuEnter();
-    });
   }
 
   function openMenu() {
-    saveEditorValue();
     if (!menuBox) buildMenu();
     menuOpen = true;
     menuSelection = 0;
@@ -436,7 +409,6 @@ function main() {
     if (!menuOpen) return;
     menuOpen = false;
     if (menuBox) menuBox.hide();
-    syncEditor();
     refreshScreen();
   }
 
@@ -453,10 +425,8 @@ function main() {
     const layout = getMenuLayout();
     const selected = getSelectedItem(layout);
     if (!selected || selected.type !== 'count') return;
-    saveEditorValue();
     const result = applyCount(state, state.todos.length + delta);
     if (result.changed) {
-      syncEditor();
       const message = result.trimmed ? `Trimmed to ${result.count}` : `Count: ${result.count}`;
       refreshScreen(message);
     }
@@ -493,88 +463,120 @@ function main() {
     }
   }
 
-  editor.on('submit', () => {
-    saveEditorValue();
-    refreshScreen(`Saved Actionplan item ${state.activeIndex + 1}`);
-  });
-
-  editor.key(['C-v', 'S-insert'], async () => {
-    const res = await readClipboard();
-    if (res.ok) {
-      const nextValue = (editor.getValue() || '') + res.text;
-      editor.setValue(nextValue);
-      saveEditorValue();
-      refreshScreen('Pasted from clipboard');
-      editor.focus();
-    } else {
-      setStatus('Clipboard read failed; paste unavailable');
-      screen.render();
-    }
-  });
-
-  screen.key(['tab'], () => {
-    if (menuOpen) {
-      closeMenu();
-    } else {
-      openMenu();
-    }
-  });
-
-  screen.key(['escape'], () => {
-    if (menuOpen) {
-      closeMenu();
+  screen.on('keypress', async (ch, key) => {
+    if (key && key.name === 'tab') {
+      if (menuOpen) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
       return;
     }
-    exit();
-  });
 
-  screen.key(['q', 'C-c'], exit);
-
-  screen.key(['up', 'k'], () => {
     if (menuOpen) {
-      moveMenuSelection(-1);
+      if (!key) return;
+      if (key.name === 'escape') {
+        closeMenu();
+        return;
+      }
+      if (key.name === 'up' || key.name === 'k') {
+        moveMenuSelection(-1);
+        return;
+      }
+      if (key.name === 'down' || key.name === 'j') {
+        moveMenuSelection(1);
+        return;
+      }
+      if (key.name === 'left') {
+        handleMenuCount(-1);
+        return;
+      }
+      if (key.name === 'right') {
+        handleMenuCount(1);
+        return;
+      }
+      if (key.name === 'enter') {
+        handleMenuEnter();
+        return;
+      }
       return;
     }
-    changeActive(-1);
-  });
 
-  screen.key(['down', 'j'], () => {
-    if (menuOpen) {
-      moveMenuSelection(1);
+    if (key && (key.name === 'escape' || key.name === 'q' || (key.name === 'c' && key.ctrl))) {
+      exit();
       return;
     }
-    changeActive(1);
-  });
 
-  screen.key(['left'], () => {
-    if (menuOpen) {
-      handleMenuCount(-1);
+    if (key && (key.name === 'up' || key.name === 'k')) {
+      changeActive(-1);
+      return;
+    }
+
+    if (key && (key.name === 'down' || key.name === 'j')) {
+      changeActive(1);
+      return;
+    }
+
+    if (key && key.name === 'f9') {
+      toggleInProgress();
+      return;
+    }
+
+    if (key && key.name === 'f10') {
+      toggleActiveDone();
+      return;
+    }
+
+    if (key && key.name === 'f4') {
+      await copyTodos();
+      return;
+    }
+
+    if (key && key.name === 'f5') {
+      printTodos();
+      return;
+    }
+
+    if (key && key.name === 'enter') {
+      if (state.activeIndex === state.todos.length - 1 && state.todos.length < 50) {
+        state.todos.push({ text: '', status: 'OPEN' });
+        state.activeIndex = state.todos.length - 1;
+        refreshScreen(`Added item ${state.activeIndex + 1}`);
+        return;
+      }
+      changeActive(1);
+      return;
+    }
+
+    if (key && key.name === 'backspace') {
+      const todo = state.todos[state.activeIndex];
+      if (todo.text.length > 0) {
+        todo.text = todo.text.slice(0, -1);
+        refreshScreen();
+      }
+      return;
+    }
+
+    if (key && ((key.name === 'v' && key.ctrl) || (key.name === 'insert' && key.shift))) {
+      const res = await readClipboard();
+      if (res.ok) {
+        const todo = state.todos[state.activeIndex];
+        todo.text = `${todo.text}${res.text}`;
+        refreshScreen('Pasted from clipboard');
+      } else {
+        setStatus('Clipboard read failed; paste unavailable');
+        screen.render();
+      }
+      return;
+    }
+
+    if (ch && ch.length === 1 && (!key || (!key.ctrl && !key.meta))) {
+      const todo = state.todos[state.activeIndex];
+      todo.text = `${todo.text}${ch}`;
+      refreshScreen();
     }
   });
 
-  screen.key(['right'], () => {
-    if (menuOpen) {
-      handleMenuCount(1);
-    }
-  });
-
-  screen.key(['f9'], () => {
-    if (!menuOpen) toggleInProgress();
-  });
-
-  screen.key(['f10'], () => {
-    if (!menuOpen) toggleActiveDone();
-  });
-
-  screen.key(['f4'], () => {
-    if (!menuOpen) copyTodos();
-  });
-
-  screen.key(['f5'], () => {
-    if (!menuOpen) printTodos();
-  });
-
-  syncEditor();
   refreshScreen();
 }
 

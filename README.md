@@ -25,9 +25,9 @@ action
 
 Start state:
 
-- The editor opens immediately with the default count (5 items).
+- The editor opens immediately with the default count (2 items).
 - All items start as OPEN, `in progress` is unset.
-- The cursor is in the Edit box for the active entry.
+- Typing edits the active entry inline.
 
 Settings menu (TAB):
 
@@ -42,6 +42,7 @@ Editor screen:
 - Header shows the timestamp from app start (refreshable from the menu).
 - Output box renders the Actionplan document with the current symbols.
 - Active line has a `▸` marker + inverse highlight (UI only, never in export).
+- Active line shows a cursor indicator `▏` at the end (UI only).
 - Empty items show a placeholder only in the UI.
 
 Symbol presets (OPEN / IN_PROGRESS / DONE):
@@ -60,13 +61,13 @@ Tokens are padded to the preset max width so the UI and export align.
 Keybindings:
 
 - `Tab`: Open/close settings menu.
-- `Enter`: Save the current editor text.
-- `Up/Down` or `j/k`: Change active item (current text is saved first).
+- `Enter`: Move to the next item (adds a new item at the end up to 50).
+- `Up/Down` or `j/k`: Change active item.
 - `F9`: Toggle "in progress" for the active item (only one at a time).
 - `F10`: Toggle done for the active item.
 - `F4`: Copy the plain checklist to the system clipboard (CRLF on Windows); OSC52 fallback on failure.
 - `F5`: Print the plain checklist to stdout and exit.
-- `Ctrl+V` / `Shift+Insert`: Paste clipboard text into the editor.
+- `Ctrl+V` / `Shift+Insert`: Paste clipboard text into the active item.
 - Exit anytime: `ESC` (also `q` / `Ctrl+C`).
 
 Clipboard note:
