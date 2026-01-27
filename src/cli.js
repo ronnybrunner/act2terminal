@@ -5,7 +5,7 @@ const blessed = require('blessed');
 
 const DONE_SYMBOL = '✓';
 const IN_PROGRESS_SYMBOL = '●';
-const NBSP = '\u00A0';
+const EMPTY_SYMBOL = '□';
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -33,7 +33,7 @@ function renderPlain(todos, inProgressIndex, generatedAt) {
       ? `[${DONE_SYMBOL}] `
       : isInProgress
         ? `[${IN_PROGRESS_SYMBOL}] `
-        : `[${NBSP}] `;
+        : `[${EMPTY_SYMBOL}] `;
     const text = todo.text ? todo.text : '';
     return `${box}${text}`;
   });
@@ -45,7 +45,7 @@ function renderScreen(todos, activeIndex, inProgressIndex, generatedAt) {
   const lines = todos.map((todo, idx) => {
     const isDone = todo.done;
     const isInProgress = !isDone && inProgressIndex === idx;
-    const box = isDone ? `[${DONE_SYMBOL}] ` : isInProgress ? `[${IN_PROGRESS_SYMBOL}] ` : '[ ] ';
+    const box = isDone ? `[${DONE_SYMBOL}] ` : isInProgress ? `[${IN_PROGRESS_SYMBOL}] ` : `[${EMPTY_SYMBOL}] `;
     const hasText = Boolean(todo.text && todo.text.trim() !== '');
     const text = hasText ? todo.text : '{gray-fg}<enter todo…>{/gray-fg}';
     const marker = idx === activeIndex ? '▸' : ' ';
