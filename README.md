@@ -44,6 +44,19 @@ Editor screen:
 - Active line has a `▸` marker + inverse highlight (UI only, never in export).
 - Empty items show a placeholder only in the UI.
 
+Symbol presets (OPEN / IN_PROGRESS / DONE):
+
+- Squares: `[□] [■] [✓]`
+- Markdown: `[ ] [~] [x]`
+- Arrows: `[ ] [>] [✓]`
+- Minimal: `[ ] [*] [✓]`
+- Pipe Tree: `[| ] [|> ] [| ✓ ]`
+- ASCII Branch: `[|- ] [|> ] [|✓ ]`
+- Bullets: `[• ] [▸ ] [✓ ]`
+- Box Drawing: `[│ ] [│▶ ] [│✓ ]`
+
+Tokens are padded to the preset max width so the UI and export align.
+
 Keybindings:
 
 - `Tab`: Open/close settings menu.

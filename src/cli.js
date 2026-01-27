@@ -12,6 +12,10 @@ const PRESETS = {
   markdown: { label: 'Markdown', openToken: ' ', inProgressToken: '~', doneToken: 'x' },
   arrows: { label: 'Arrows', openToken: ' ', inProgressToken: '>', doneToken: '✓' },
   minimal: { label: 'Minimal', openToken: ' ', inProgressToken: '*', doneToken: '✓' },
+  pipeTree: { label: 'Pipe Tree', openToken: '| ', inProgressToken: '|> ', doneToken: '| ✓ ' },
+  asciiBranch: { label: 'ASCII Branch', openToken: '|- ', inProgressToken: '|> ', doneToken: '|✓ ' },
+  bullets: { label: 'Bullets', openToken: '• ', inProgressToken: '▸ ', doneToken: '✓ ' },
+  boxDrawing: { label: 'Box Drawing', openToken: '│ ', inProgressToken: '│▶ ', doneToken: '│✓ ' },
 };
 
 const HEADER_STYLES = {
@@ -54,18 +58,35 @@ function buildHeader(state) {
   return `${style.prefix} (${formatDate(state.generatedAt)})`;
 }
 
-function getToken(state, idx) {
-  const preset = PRESETS[state.presetKey] || PRESETS.squares;
+function getPreset(state) {
+  return PRESETS[state.presetKey] || PRESETS.squares;
+}
+
+function getPaddedTokens(preset) {
+  const width = Math.max(
+    preset.openToken.length,
+    preset.inProgressToken.length,
+    preset.doneToken.length,
+  );
+  return {
+    openToken: preset.openToken.padEnd(width, ' '),
+    inProgressToken: preset.inProgressToken.padEnd(width, ' '),
+    doneToken: preset.doneToken.padEnd(width, ' '),
+  };
+}
+
+function getToken(state, tokens, idx) {
   const todo = state.todos[idx];
-  if (todo.status === 'DONE') return preset.doneToken;
-  if (state.inProgressIndex === idx) return preset.inProgressToken;
-  return preset.openToken;
+  if (todo.status === 'DONE') return tokens.doneToken;
+  if (state.inProgressIndex === idx) return tokens.inProgressToken;
+  return tokens.openToken;
 }
 
 function renderPlain(state) {
   const header = buildHeader(state);
+  const tokens = getPaddedTokens(getPreset(state));
   const lines = state.todos.map((todo, idx) => {
-    const token = getToken(state, idx);
+    const token = getToken(state, tokens, idx);
     const text = todo.text ? todo.text : '';
     return `[${token}] ${text}`;
   });
@@ -74,8 +95,9 @@ function renderPlain(state) {
 
 function renderScreen(state) {
   const header = buildHeader(state);
+  const tokens = getPaddedTokens(getPreset(state));
   const lines = state.todos.map((todo, idx) => {
-    const token = getToken(state, idx);
+    const token = getToken(state, tokens, idx);
     const hasText = Boolean(todo.text && todo.text.trim() !== '');
     const text = hasText ? todo.text : '{gray-fg}<enter todo...>{/gray-fg}';
     const marker = idx === state.activeIndex ? '▸' : ' ';
@@ -233,7 +255,7 @@ function main() {
 
   function formatStatusLine() {
     const progress = state.inProgressIndex !== null ? state.inProgressIndex + 1 : '-';
-    const preset = PRESETS[state.presetKey] || PRESETS.squares;
+    const preset = getPreset(state);
     return `Active: ${state.activeIndex + 1}/${state.todos.length}, In progress: ${progress}, Preset: ${preset.label}`;
   }
 
