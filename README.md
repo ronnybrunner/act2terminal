@@ -1,6 +1,6 @@
 # act2terminal
 
-Terminal UI (TUI) wizard that asks for a number (1..50) and opens an Actionplan checklist editor with clipboard export.
+Terminal UI (TUI) Actionplan editor that starts immediately, with a tab settings menu for count, presets, and clipboard export.
 
 ## Install
 
@@ -17,34 +17,44 @@ action
 
 ## Usage
 
-Start the wizard:
+Start the editor:
 
 ```bash
 action
 ```
 
-Flow:
+Start state:
 
-1. Wizard Step 1: enter the number of Actionplan items (1..50).
-2. The editor opens immediately with that many entries.
+- The editor opens immediately with the default count (5 items).
+- All items start as OPEN, `in progress` is unset.
+- The cursor is in the Edit box for the active entry.
 
-Editor screen (checklist style):
+Settings menu (TAB):
 
-- Header: `# Actionplan (YYYY-MM-DD HH:mm)` with the timestamp frozen when the editor opens.
-- Checklist lines: `[□]` / `[✓]` / `[■]` with an active marker `▸` and inverse highlight for the selected line. `[✓]` wins over `[■]` when both would apply.
-- Empty items show a placeholder in the UI only (`<enter todo…>`); exports never include the placeholder and keep empty lines as `[□]`.
+- `Tab`: Open/close the settings overlay.
+- `Up/Down`: Move selection.
+- `Left/Right`: Change the count when on “Anzahl Punkte”.
+- `Enter`: Select a preset, header style, or refresh the timestamp.
+- `ESC` / `Tab`: Close and return to the editor.
+
+Editor screen:
+
+- Header shows the timestamp from app start (refreshable from the menu).
+- Output box renders the Actionplan document with the current symbols.
+- Active line has a `▸` marker + inverse highlight (UI only, never in export).
+- Empty items show a placeholder only in the UI.
 
 Keybindings:
 
+- `Tab`: Open/close settings menu.
 - `Enter`: Save the current editor text.
 - `Up/Down` or `j/k`: Change active item (current text is saved first).
-- `F9`: Toggle "in progress" for the active item (`[■]`), only one entry at a time.
-- `F10`: Toggle done for the active item (`[✓]`).
-- `F4`: Copy the plain checklist (no UI tags/marker) to the system clipboard; OSC52 fallback on failure.
+- `F9`: Toggle "in progress" for the active item (only one at a time).
+- `F10`: Toggle done for the active item.
+- `F4`: Copy the plain checklist to the system clipboard (CRLF on Windows); OSC52 fallback on failure.
 - `F5`: Print the plain checklist to stdout and exit.
 - `Ctrl+V` / `Shift+Insert`: Paste clipboard text into the editor.
-- `r`: Restart the wizard.
-- Exit anytime: `ESC` / `q` / `Ctrl+C`.
+- Exit anytime: `ESC` (also `q` / `Ctrl+C`).
 
 Clipboard note:
 
