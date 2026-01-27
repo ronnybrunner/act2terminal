@@ -28,11 +28,11 @@ function renderPlain(todos, inProgressIndex, generatedAt) {
   const lines = todos.map((todo, idx) => {
     const isDone = todo.done;
     const isInProgress = !isDone && inProgressIndex === idx;
-    const box = isDone ? `[${DONE_SYMBOL}]` : isInProgress ? `[${IN_PROGRESS_SYMBOL}]` : '[ ]';
-    const text = todo.text ? ` ${todo.text}` : '';
+    const box = isDone ? `[${DONE_SYMBOL}] ` : isInProgress ? `[${IN_PROGRESS_SYMBOL}] ` : '[ ] ';
+    const text = todo.text ? todo.text : '';
     return `${box}${text}`;
   });
-  return [header, ...lines].join('\n');
+  return [header, '', ...lines].join('\n');
 }
 
 function renderScreen(todos, activeIndex, inProgressIndex, generatedAt) {
@@ -40,11 +40,11 @@ function renderScreen(todos, activeIndex, inProgressIndex, generatedAt) {
   const lines = todos.map((todo, idx) => {
     const isDone = todo.done;
     const isInProgress = !isDone && inProgressIndex === idx;
-    const box = isDone ? `[${DONE_SYMBOL}]` : isInProgress ? `[${IN_PROGRESS_SYMBOL}]` : '[ ]';
+    const box = isDone ? `[${DONE_SYMBOL}] ` : isInProgress ? `[${IN_PROGRESS_SYMBOL}] ` : '[ ] ';
     const hasText = Boolean(todo.text && todo.text.trim() !== '');
     const text = hasText ? todo.text : '{gray-fg}<enter todo…>{/gray-fg}';
     const marker = idx === activeIndex ? '▸' : ' ';
-    const line = `${marker} ${box} ${text}`;
+    const line = `${marker} ${box}${text}`;
     return idx === activeIndex ? `{inverse}${line}{/inverse}` : line;
   });
   return [header, ...lines].join('\n');
