@@ -5,6 +5,7 @@ const blessed = require('blessed');
 
 const DONE_SYMBOL = '✓';
 const IN_PROGRESS_SYMBOL = '●';
+const NBSP = '\u00A0';
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -28,7 +29,11 @@ function renderPlain(todos, inProgressIndex, generatedAt) {
   const lines = todos.map((todo, idx) => {
     const isDone = todo.done;
     const isInProgress = !isDone && inProgressIndex === idx;
-    const box = isDone ? `[${DONE_SYMBOL}] ` : isInProgress ? `[${IN_PROGRESS_SYMBOL}] ` : '[ ] ';
+    const box = isDone
+      ? `[${DONE_SYMBOL}] `
+      : isInProgress
+        ? `[${IN_PROGRESS_SYMBOL}] `
+        : `[${NBSP}] `;
     const text = todo.text ? todo.text : '';
     return `${box}${text}`;
   });
@@ -318,7 +323,8 @@ function main() {
     if (!todos.length) return;
     saveEditorValue();
     const plain = renderPlain(todos, inProgressIndex, generatedAt);
-    const res = await writeClipboard(plain);
+    const plainForClipboard = plain.replace(/\n/g, '\r\n');
+    const res = await writeClipboard(plainForClipboard);
     if (res.ok) {
       setStatus('Copied ✓ (F4)');
     } else {
