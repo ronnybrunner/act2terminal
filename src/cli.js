@@ -3,6 +3,9 @@
 
 const blessed = require('blessed');
 
+const DONE_SYMBOL = '✓';
+const IN_PROGRESS_SYMBOL = '●';
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -20,20 +23,24 @@ function formatDate(generatedAt) {
   return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
-function renderPlain(todos, generatedAt) {
+function renderPlain(todos, inProgressIndex, generatedAt) {
   const header = `# Todos (${formatDate(generatedAt)})`;
-  const lines = todos.map((todo) => {
-    const box = todo.done ? '[x]' : '[ ]';
+  const lines = todos.map((todo, idx) => {
+    const isDone = todo.done;
+    const isInProgress = !isDone && inProgressIndex === idx;
+    const box = isDone ? `[${DONE_SYMBOL}]` : isInProgress ? `[${IN_PROGRESS_SYMBOL}]` : '[ ]';
     const text = todo.text ? ` ${todo.text}` : '';
     return `${box}${text}`;
   });
   return [header, ...lines].join('\n');
 }
 
-function renderScreen(todos, activeIndex, generatedAt) {
+function renderScreen(todos, activeIndex, inProgressIndex, generatedAt) {
   const header = `# Todos (${formatDate(generatedAt)})`;
   const lines = todos.map((todo, idx) => {
-    const box = todo.done ? '[x]' : '[ ]';
+    const isDone = todo.done;
+    const isInProgress = !isDone && inProgressIndex === idx;
+    const box = isDone ? `[${DONE_SYMBOL}]` : isInProgress ? `[${IN_PROGRESS_SYMBOL}]` : '[ ]';
     const hasText = Boolean(todo.text && todo.text.trim() !== '');
     const text = hasText ? todo.text : '{gray-fg}<enter todo…>{/gray-fg}';
     const marker = idx === activeIndex ? '▸' : ' ';
@@ -93,7 +100,7 @@ function main() {
     height: 3,
     width: '100%',
     tags: true,
-    content: ' {bold}Todo Checklist{/bold}  F4=Copy, Space=Done, Enter=Save, ↑↓=Select (ESC/q/Ctrl+C = Exit)',
+    content: ' {bold}Todo Checklist{/bold}  F4=Copy, F5=Print, F9=In progress, F10=Done, Enter=Save, ↑↓=Select (ESC/q/Ctrl+C = Exit)',
     border: 'line',
   });
 
@@ -172,6 +179,7 @@ function main() {
 
   let todos = [];
   let activeIndex = 0;
+  let inProgressIndex = null;
   let generatedAt = new Date();
   let resultBox;
   let listBox;
@@ -252,14 +260,16 @@ function main() {
 
   function refreshTodos(reason = 'init', message) {
     if (!listBox || !todos.length) return;
-    const screenText = renderScreen(todos, activeIndex, generatedAt);
+    const screenText = renderScreen(todos, activeIndex, inProgressIndex, generatedAt);
     listBox.setContent(screenText);
     if (message) {
       setStatus(message);
     } else if (reason === 'current') {
-      setStatus(`Aktiv: ${activeIndex + 1}/${todos.length}`);
+      const progressLabel = inProgressIndex !== null ? inProgressIndex + 1 : '-';
+      setStatus(`Aktiv: ${activeIndex + 1}/${todos.length} (In progress: ${progressLabel})`);
     } else {
-      setStatus(`Todos: ${todos.length}, aktiv ${activeIndex + 1}`);
+      const progressLabel = inProgressIndex !== null ? inProgressIndex + 1 : '-';
+      setStatus(`Todos: ${todos.length}, aktiv ${activeIndex + 1} (In progress: ${progressLabel})`);
     }
     screen.render();
   }
@@ -283,14 +293,31 @@ function main() {
   function toggleActiveDone() {
     if (!todos.length) return;
     saveEditorValue();
-    todos[activeIndex].done = !todos[activeIndex].done;
-    refreshTodos('toggle', todos[activeIndex].done ? 'Marked done' : 'Marked open');
+    const nextDone = !todos[activeIndex].done;
+    todos[activeIndex].done = nextDone;
+    if (nextDone && inProgressIndex === activeIndex) {
+      inProgressIndex = null;
+    }
+    const label = `Done toggled for ${activeIndex + 1}`;
+    refreshTodos('toggle', label);
+  }
+
+  function toggleInProgress() {
+    if (!todos.length) return;
+    saveEditorValue();
+    if (inProgressIndex === activeIndex) {
+      inProgressIndex = null;
+      refreshTodos('inprogress', 'In progress: -');
+      return;
+    }
+    inProgressIndex = activeIndex;
+    refreshTodos('inprogress', `In progress: ${activeIndex + 1}`);
   }
 
   async function copyTodos() {
     if (!todos.length) return;
     saveEditorValue();
-    const plain = renderPlain(todos, generatedAt);
+    const plain = renderPlain(todos, inProgressIndex, generatedAt);
     const res = await writeClipboard(plain);
     if (res.ok) {
       setStatus('Copied ✓ (F4)');
@@ -304,7 +331,7 @@ function main() {
   function printTodos() {
     if (!todos.length) return;
     saveEditorValue();
-    const plain = renderPlain(todos, generatedAt);
+    const plain = renderPlain(todos, inProgressIndex, generatedAt);
     screen.destroy();
     process.stdout.write(plain + '\n');
     process.exit(0);
@@ -314,6 +341,7 @@ function main() {
     saveEditorValue();
     todos = [];
     activeIndex = 0;
+    inProgressIndex = null;
     generatedAt = new Date();
     if (resultBox) {
       resultBox.hide();
@@ -330,6 +358,7 @@ function main() {
     buildEditorUI();
     todos = Array.from({ length: count }, () => ({ text: '', done: false }));
     activeIndex = 0;
+    inProgressIndex = 0;
     generatedAt = new Date();
     form.hide();
     if (resultBox) {
@@ -359,7 +388,8 @@ function main() {
 
   screen.key(['up', 'k'], () => changeActive(-1));
   screen.key(['down', 'j'], () => changeActive(1));
-  screen.key(['space'], () => toggleActiveDone());
+  screen.key(['f9'], () => toggleInProgress());
+  screen.key(['f10'], () => toggleActiveDone());
   screen.key(['f4'], () => {
     copyTodos();
   });

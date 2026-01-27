@@ -31,14 +31,15 @@ Flow:
 Editor screen (checklist style):
 
 - Header: `# Todos (YYYY-MM-DD HH:mm)` with the timestamp frozen when the editor opens.
-- Checklist lines: `[ ]` / `[x]` with an active marker `▸` and inverse highlight for the selected line.
+- Checklist lines: `[ ]` / `[✓]` / `[●]` with an active marker `▸` and inverse highlight for the selected line. `[✓]` wins over `[●]` when both would apply.
 - Empty todos show a placeholder in the UI only (`<enter todo…>`); exports never include the placeholder and keep empty lines as `[ ]`.
 
 Keybindings:
 
 - `Enter`: Save the current editor text.
 - `Up/Down` or `j/k`: Change active todo (current text is saved first).
-- `Space`: Toggle done for the active todo (`[ ]` ↔ `[x]`).
+- `F9`: Toggle "in progress" for the active todo (`[●]`), only one entry at a time.
+- `F10`: Toggle done for the active todo (`[✓]`).
 - `F4`: Copy the plain checklist (no UI tags/marker) to the system clipboard; OSC52 fallback on failure.
 - `F5`: Print the plain checklist to stdout and exit.
 - `Ctrl+V` / `Shift+Insert`: Paste clipboard text into the editor.
