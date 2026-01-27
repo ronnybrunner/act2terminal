@@ -23,7 +23,7 @@ const HEADER_STYLES = {
   plain: { label: 'Actionplan (YYYY-MM-DD HH:mm)', prefix: 'Actionplan' },
 };
 
-const HELP_LINE = 'Tab=Menu, F4=Copy, F5=Print, ↑↓=Select, Enter=Next, F9=In progress, F10=Done, ESC=Exit';
+const HELP_LINE = 'Tab=Menu, F4=Copy, F5=Print, ↑↓=Select, Enter=Next, F8=Open, F9=In progress, F10=Done, ESC=Exit';
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -44,7 +44,7 @@ function formatDate(generatedAt) {
 
 function initState() {
   return {
-    todos: Array.from({ length: DEFAULT_COUNT }, () => ({ text: '', status: 'OPEN' })),
+    todos: Array.from({ length: DEFAULT_COUNT }, () => ({ text: '', done: false })),
     activeIndex: 0,
     inProgressIndex: null,
     generatedAt: new Date(),
@@ -77,7 +77,7 @@ function getPaddedTokens(preset) {
 
 function getToken(state, tokens, idx) {
   const todo = state.todos[idx];
-  if (todo.status === 'DONE') return tokens.doneToken;
+  if (todo.done) return tokens.doneToken;
   if (state.inProgressIndex === idx) return tokens.inProgressToken;
   return tokens.openToken;
 }
@@ -118,7 +118,7 @@ function applyCount(state, newN) {
 
   if (clamped > current) {
     for (let i = current; i < clamped; i += 1) {
-      state.todos.push({ text: '', status: 'OPEN' });
+      state.todos.push({ text: '', done: false });
     }
   } else {
     state.todos = state.todos.slice(0, clamped);
@@ -277,23 +277,37 @@ function main() {
     }
   }
 
-  function toggleActiveDone() {
+  function setActiveOpen() {
     const todo = state.todos[state.activeIndex];
-    todo.status = todo.status === 'DONE' ? 'OPEN' : 'DONE';
-    if (todo.status === 'DONE' && state.inProgressIndex === state.activeIndex) {
+    todo.done = false;
+    if (state.inProgressIndex === state.activeIndex) {
       state.inProgressIndex = null;
     }
-    refreshScreen(`Done toggled for ${state.activeIndex + 1}`);
+    refreshScreen(`Set OPEN: ${state.activeIndex + 1}`);
   }
 
   function toggleInProgress() {
     if (state.inProgressIndex === state.activeIndex) {
       state.inProgressIndex = null;
-      refreshScreen('In progress: -');
+      refreshScreen(`Cleared IN_PROGRESS: ${state.activeIndex + 1}`);
       return;
     }
     state.inProgressIndex = state.activeIndex;
-    refreshScreen(`In progress: ${state.activeIndex + 1}`);
+    state.todos[state.activeIndex].done = false;
+    refreshScreen(`Set IN_PROGRESS: ${state.activeIndex + 1}`);
+  }
+
+  function toggleActiveDone() {
+    const todo = state.todos[state.activeIndex];
+    todo.done = !todo.done;
+    if (todo.done) {
+      if (state.inProgressIndex === state.activeIndex) {
+        state.inProgressIndex = null;
+      }
+      refreshScreen(`Set DONE: ${state.activeIndex + 1}`);
+      return;
+    }
+    refreshScreen(`Cleared DONE: ${state.activeIndex + 1}`);
   }
 
   async function copyTodos() {
@@ -517,6 +531,11 @@ function main() {
       return;
     }
 
+    if (key && key.name === 'f8') {
+      setActiveOpen();
+      return;
+    }
+
     if (key && key.name === 'f9') {
       toggleInProgress();
       return;
@@ -539,7 +558,7 @@ function main() {
 
     if (key && key.name === 'enter') {
       if (state.activeIndex === state.todos.length - 1 && state.todos.length < 50) {
-        state.todos.push({ text: '', status: 'OPEN' });
+        state.todos.push({ text: '', done: false });
         state.activeIndex = state.todos.length - 1;
         refreshScreen(`Added item ${state.activeIndex + 1}`);
         return;

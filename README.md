@@ -63,8 +63,9 @@ Keybindings:
 - `Tab`: Open/close settings menu.
 - `Enter`: Move to the next item (adds a new item at the end up to 50).
 - `Up/Down` or `j/k`: Change active item.
+- `F8`: Set OPEN for the active item.
 - `F9`: Toggle "in progress" for the active item (only one at a time).
-- `F10`: Toggle done for the active item.
+- `F10`: Toggle DONE for the active item.
 - `F4`: Copy the plain checklist to the system clipboard (CRLF on Windows); OSC52 fallback on failure.
 - `F5`: Print the plain checklist to stdout and exit.
 - `Ctrl+V` / `Shift+Insert`: Paste clipboard text into the active item.
@@ -81,6 +82,14 @@ npm install
 npm link
 action
 ```
+
+Manual checks:
+
+- `F10` sets DONE on item 1 (DONE token visible).
+- `F9` sets IN_PROGRESS on item 1 (DONE clears).
+- `F8` sets OPEN on item 1.
+- `F10` toggles DONE off on item 1.
+- `F9` on item 2 moves IN_PROGRESS to item 2.
 
 ## Clipboard troubleshooting (Linux)
 
