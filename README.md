@@ -27,10 +27,16 @@ Exit anytime with: `ESC` / `q` / `Ctrl+C`.
 
 On the output screen you can:
 
-- `Copy` to system clipboard (clipboardy)
-- fallback: emits OSC52 escape sequence when clipboard is unavailable
-- `Print stdout` (prints the plan after the UI closes; handy for piping)
-- `Restart` / `Exit`
+- Edit the current point in the editor (focus starts there); type and hit `Enter` to commit, or move with `Up/Down` and your edits carry over.
+- Paste text into the editor with `Ctrl+V` or `Shift+Insert` (reads the system clipboard via clipboardy).
+- `Copy` (`c` shortcut) copies the plain rendered plan with timestamp header to the system clipboard (clipboardy on Windows; OSC52 fallback otherwise).
+- `Print stdout` (`p`) prints the plan after the UI closes (handy for piping).
+- `Restart` (`r`) / `Exit`.
+
+Notes:
+
+- The header includes the generated time (`Actionplan (YYYY-MM-DD HH:mm)`) captured when the output screen opens; Copy/Print always use that exact text.
+- On Windows, `clipboardy` uses native clipboard APIs and should work out of the box; OSC52 remains as fallback.
 
 ## Manual test
 

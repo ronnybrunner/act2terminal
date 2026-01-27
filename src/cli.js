@@ -7,15 +7,43 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-function renderTreePlan(n, currentIndex) {
-  const activeIndex = clamp(currentIndex, 1, n);
-  const lines = ['Actionplan:', '|', '|'];
-  for (let i = 1; i <= n; i++) {
-    const prefix = i === activeIndex ? '| ->' : '|    ';
-    lines.push(`${prefix} Punkt ${i}`);
+function pad(num) {
+  return num.toString().padStart(2, '0');
+}
+
+function formatHeader(generatedAt) {
+  const year = generatedAt.getFullYear();
+  const month = pad(generatedAt.getMonth() + 1);
+  const day = pad(generatedAt.getDate());
+  const hours = pad(generatedAt.getHours());
+  const minutes = pad(generatedAt.getMinutes());
+  return `Actionplan (${year}-${month}-${day} ${hours}:${minutes})`;
+}
+
+function renderTreePlan(items, currentIndex, generatedAt, forScreen) {
+  const count = Math.max(items.length, 1);
+  const activeIndex = clamp(currentIndex, 1, count);
+  const header = `${formatHeader(generatedAt)}:`;
+
+  const plainLines = [header, '|', '|'];
+  const screenLines = [header, '|', '|'];
+
+  for (let i = 1; i <= count; i++) {
+    const text = items[i - 1]?.text ?? `Punkt ${i}`;
+    const isActive = i === activeIndex;
+    const plainPrefix = isActive ? '| ->' : '|    ';
+    const screenPrefix = isActive && forScreen ? '| {inverse}->{/inverse} ' : '|    ';
+    plainLines.push(`${plainPrefix} ${text}`);
+    screenLines.push(`${screenPrefix}${text}`);
   }
-  lines.push('|', '|');
-  return lines.join('\n');
+
+  plainLines.push('|', '|');
+  screenLines.push('|', '|');
+
+  return {
+    plain: plainLines.join('\n'),
+    screen: screenLines.join('\n'),
+  };
 }
 
 function osc52Copy(text) {
@@ -23,11 +51,30 @@ function osc52Copy(text) {
   process.stdout.write(`\u001b]52;c;${b64}\u0007`);
 }
 
+let clipboardyPromise;
+
+async function loadClipboardy() {
+  if (!clipboardyPromise) {
+    clipboardyPromise = import('clipboardy').then((mod) => mod.default || mod);
+  }
+  return clipboardyPromise;
+}
+
 async function writeClipboard(text) {
   try {
-    const mod = await import('clipboardy'); // ESM
-    await mod.default.write(text);
+    const clipboardy = await loadClipboardy();
+    await clipboardy.write(text);
     return { ok: true, mode: 'clipboardy' };
+  } catch (err) {
+    return { ok: false, err };
+  }
+}
+
+async function readClipboard() {
+  try {
+    const clipboardy = await loadClipboardy();
+    const text = await clipboardy.read();
+    return { ok: true, text };
   } catch (err) {
     return { ok: false, err };
   }
@@ -183,40 +230,43 @@ function main() {
   let total = 0;
   let currentIndex = 1;
   let planNormalized = '';
+  let items = [];
+  let generatedAt = new Date();
   let output;
   let resultBox;
+  let editor;
 
-  function decoratePlan(n, active) {
-    const activeIndex = clamp(active, 1, n);
-    const lines = ['Actionplan:', '|', '|'];
-    for (let i = 1; i <= n; i++) {
-      const isActive = i === activeIndex;
-      const line = isActive
-        ? '| {inverse}->{/inverse} Punkt ' + i
-        : '|    Punkt ' + i;
-      lines.push(line);
-    }
-    lines.push('|', '|');
-    return lines.join('\n');
+  function saveEditorValue() {
+    if (!editor || !items.length) return;
+    const idx = clamp(currentIndex, 1, items.length);
+    items[idx - 1].text = editor.getValue() || '';
   }
 
-  function updatePlan(reason = 'init') {
-    planNormalized = renderTreePlan(total, currentIndex).replace(/\r\n/g, '\n');
+  function refreshPlan(reason = 'init', message, options = {}) {
+    if (!items.length) return;
+    const rendered = renderTreePlan(items, currentIndex, generatedAt, true);
+    planNormalized = rendered.plain.replace(/\r\n/g, '\n');
     if (output) {
-      output.setContent(decoratePlan(total, currentIndex));
-      output.setScroll(0);
+      output.setContent(rendered.screen);
     }
-    if (reason === 'current') {
-      setStatus(`Current: ${currentIndex}/${total}`);
-    } else {
-      setStatus(
-        `Generated plan: ${planNormalized.length} chars, ${total} items, current ${currentIndex}`,
-      );
+    if (!options.skipStatus) {
+      if (message) {
+        setStatus(message);
+      } else if (reason === 'current') {
+        setStatus(`Current: ${currentIndex}/${items.length}`);
+      } else {
+        setStatus(
+          `Generated plan: ${planNormalized.length} chars, ${items.length} items, current ${currentIndex}`,
+        );
+      }
     }
+    screen.render();
   }
 
   async function copyPlan() {
-    if (!planNormalized) return;
+    if (!items.length) return;
+    saveEditorValue();
+    refreshPlan('edit', undefined, { skipStatus: true });
     setStatus('Copying...');
     const res = await writeClipboard(planNormalized);
     if (res.ok) {
@@ -228,20 +278,28 @@ function main() {
   }
 
   function printPlan() {
-    if (!planNormalized) return;
+    if (!items.length) return;
+    saveEditorValue();
+    refreshPlan('edit', undefined, { skipStatus: true });
     screen.destroy();
     process.stdout.write(planNormalized + '\n');
     process.exit(0);
   }
 
   function changeCurrent(delta) {
-    if (!output || !total) return;
-    const next = clamp(currentIndex + delta, 1, total);
+    if (!output || !items.length) return;
+    const next = clamp(currentIndex + delta, 1, items.length);
     if (next !== currentIndex) {
+      saveEditorValue();
       currentIndex = next;
-      updatePlan('current');
+      if (editor) {
+        editor.setValue(items[next - 1].text);
+        editor.focus();
+      }
+      refreshPlan('current');
     } else {
-      setStatus(`Current: ${currentIndex}/${total}`);
+      setStatus(`Current: ${currentIndex}/${items.length}`);
+      screen.render();
     }
   }
 
@@ -250,11 +308,17 @@ function main() {
       resultBox.destroy();
       resultBox = undefined;
       output = undefined;
+      editor = undefined;
     }
   }
 
   function restart() {
     destroyResult();
+    items = [];
+    total = 0;
+    currentIndex = 1;
+    planNormalized = '';
+    generatedAt = new Date();
     form.show();
     formCurrent.hide();
     input.setValue('');
@@ -273,6 +337,7 @@ function main() {
     destroyResult();
 
     total = n;
+    items = Array.from({ length: n }, (_, i) => ({ text: `Punkt ${i + 1}` }));
     currentIndex = clamp(currentIndex, 1, total);
 
     // Screen 3: output + actions
@@ -291,7 +356,7 @@ function main() {
       top: 0,
       left: 0,
       width: '100%-2',
-      height: '100%-4',
+      height: '100%-7',
       border: 'line',
       scrollable: true,
       alwaysScroll: true,
@@ -300,6 +365,25 @@ function main() {
       vi: true,
       tags: true,
       scrollbar: { ch: ' ', inverse: true },
+    });
+
+    blessed.text({
+      parent: resultBox,
+      top: '100%-7',
+      left: 1,
+      content: 'Edit current:',
+    });
+
+    editor = blessed.textbox({
+      parent: resultBox,
+      top: '100%-6',
+      left: 1,
+      width: '100%-2',
+      height: 3,
+      border: 'line',
+      inputOnFocus: true,
+      keys: true,
+      mouse: true,
     });
 
     const bar = blessed.box({
@@ -362,9 +446,30 @@ function main() {
 
     exitBtn.on('press', exit);
 
-    // focus output so selection works
-    output.focus();
-    updatePlan('init');
+    editor.setValue(items[currentIndex - 1].text);
+
+    editor.on('submit', () => {
+      saveEditorValue();
+      refreshPlan('edit', `Updated Punkt ${currentIndex}`);
+    });
+
+    editor.key(['C-v', 'S-insert'], async () => {
+      const res = await readClipboard();
+      if (res.ok) {
+        const nextValue = (editor.getValue() || '') + res.text;
+        editor.setValue(nextValue);
+        saveEditorValue();
+        refreshPlan('edit', 'Pasted from clipboard');
+        editor.focus();
+      } else {
+        setStatus('Clipboard read failed; paste unavailable');
+        screen.render();
+      }
+    });
+
+    // focus editor by default
+    editor.focus();
+    refreshPlan('init');
   }
 
   function onNextCount() {
@@ -377,6 +482,7 @@ function main() {
     }
     errBox.setContent('');
     total = n;
+    items = Array.from({ length: n }, (_, i) => ({ text: `Punkt ${i + 1}` }));
     currentQuestion.setContent(`Bei welchem Punkt arbeitest du gerade? (1..${n})`);
     currentInput.setValue('1');
     form.hide();
@@ -397,6 +503,7 @@ function main() {
     }
     currentErrBox.setContent('');
     currentIndex = idx;
+    generatedAt = new Date();
     showResult(total);
   }
 
