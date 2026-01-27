@@ -1,6 +1,6 @@
 # act2terminal
 
-Terminal UI (TUI) wizard that asks for a number (1..50) and generates an Actionplan checklist.
+Terminal UI (TUI) wizard that asks for a number (1..50) and opens a Todo-checklist editor with clipboard export.
 
 ## Install
 
@@ -23,20 +23,31 @@ Start the wizard:
 action
 ```
 
-Exit anytime with: `ESC` / `q` / `Ctrl+C`.
+Flow:
 
-On the output screen you can:
+1. Wizard Step 1: enter the number of todos (1..50).
+2. The editor opens immediately with that many entries.
 
-- Edit the current point in the editor (focus starts there); type and hit `Enter` to commit, or move with `Up/Down` and your edits carry over.
-- Paste text into the editor with `Ctrl+V` or `Shift+Insert` (reads the system clipboard via clipboardy).
-- `Copy` (`c` shortcut) copies the plain rendered plan with timestamp header to the system clipboard (clipboardy on Windows; OSC52 fallback otherwise).
-- `Print stdout` (`p`) prints the plan after the UI closes (handy for piping).
-- `Restart` (`r`) / `Exit`.
+Editor screen (checklist style):
 
-Notes:
+- Header: `# Todos (YYYY-MM-DD HH:mm)` with the timestamp frozen when the editor opens.
+- Checklist lines: `[ ]` / `[x]` with an active marker `▸` and inverse highlight for the selected line.
+- Empty todos show a placeholder in the UI only (`<enter todo…>`); exports never include the placeholder and keep empty lines as `[ ]`.
 
-- The header includes the generated time (`Actionplan (YYYY-MM-DD HH:mm)`) captured when the output screen opens; Copy/Print always use that exact text.
-- On Windows, `clipboardy` uses native clipboard APIs and should work out of the box; OSC52 remains as fallback.
+Keybindings:
+
+- `Enter`: Save the current editor text.
+- `Up/Down` or `j/k`: Change active todo (current text is saved first).
+- `Space`: Toggle done for the active todo (`[ ]` ↔ `[x]`).
+- `F4`: Copy the plain checklist (no UI tags/marker) to the system clipboard; OSC52 fallback on failure.
+- `F5`: Print the plain checklist to stdout and exit.
+- `Ctrl+V` / `Shift+Insert`: Paste clipboard text into the editor.
+- `r`: Restart the wizard.
+- Exit anytime: `ESC` / `q` / `Ctrl+C`.
+
+Clipboard note:
+
+- On Windows, `clipboardy` uses the native clipboard. If it fails, OSC52 is used as a fallback (terminal support required).
 
 ## Manual test
 

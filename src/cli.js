@@ -11,39 +11,36 @@ function pad(num) {
   return num.toString().padStart(2, '0');
 }
 
-function formatHeader(generatedAt) {
+function formatDate(generatedAt) {
   const year = generatedAt.getFullYear();
   const month = pad(generatedAt.getMonth() + 1);
   const day = pad(generatedAt.getDate());
   const hours = pad(generatedAt.getHours());
   const minutes = pad(generatedAt.getMinutes());
-  return `Actionplan (${year}-${month}-${day} ${hours}:${minutes})`;
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
-function renderTreePlan(items, currentIndex, generatedAt, forScreen) {
-  const count = Math.max(items.length, 1);
-  const activeIndex = clamp(currentIndex, 1, count);
-  const header = `${formatHeader(generatedAt)}:`;
+function renderPlain(todos, generatedAt) {
+  const header = `# Todos (${formatDate(generatedAt)})`;
+  const lines = todos.map((todo) => {
+    const box = todo.done ? '[x]' : '[ ]';
+    const text = todo.text ? ` ${todo.text}` : '';
+    return `${box}${text}`;
+  });
+  return [header, ...lines].join('\n');
+}
 
-  const plainLines = [header, '|', '|'];
-  const screenLines = [header, '|', '|'];
-
-  for (let i = 1; i <= count; i++) {
-    const text = items[i - 1]?.text ?? `Punkt ${i}`;
-    const isActive = i === activeIndex;
-    const plainPrefix = isActive ? '| ->' : '|    ';
-    const screenPrefix = isActive && forScreen ? '| {inverse}->{/inverse} ' : '|    ';
-    plainLines.push(`${plainPrefix} ${text}`);
-    screenLines.push(`${screenPrefix}${text}`);
-  }
-
-  plainLines.push('|', '|');
-  screenLines.push('|', '|');
-
-  return {
-    plain: plainLines.join('\n'),
-    screen: screenLines.join('\n'),
-  };
+function renderScreen(todos, activeIndex, generatedAt) {
+  const header = `# Todos (${formatDate(generatedAt)})`;
+  const lines = todos.map((todo, idx) => {
+    const box = todo.done ? '[x]' : '[ ]';
+    const hasText = Boolean(todo.text && todo.text.trim() !== '');
+    const text = hasText ? todo.text : '{gray-fg}<enter todo…>{/gray-fg}';
+    const marker = idx === activeIndex ? '▸' : ' ';
+    const line = `${marker} ${box} ${text}`;
+    return idx === activeIndex ? `{inverse}${line}{/inverse}` : line;
+  });
+  return [header, ...lines].join('\n');
 }
 
 function osc52Copy(text) {
@@ -83,20 +80,20 @@ async function readClipboard() {
 function main() {
   const screen = blessed.screen({
     smartCSR: true,
-    title: 'Action Wizard',
+    title: 'Todo Checklist',
     fullUnicode: true,
     dockBorders: true,
     mouse: true,
   });
 
-  blessed.box({
+  const header = blessed.box({
     parent: screen,
     top: 0,
     left: 0,
     height: 3,
     width: '100%',
     tags: true,
-    content: ' {bold}Actionplan Wizard{/bold}  (ESC/q/Ctrl+C = Exit)',
+    content: ' {bold}Todo Checklist{/bold}  F4=Copy, Space=Done, Enter=Save, ↑↓=Select (ESC/q/Ctrl+C = Exit)',
     border: 'line',
   });
 
@@ -123,15 +120,14 @@ function main() {
 
   screen.key(['escape', 'q', 'C-c'], exit);
 
-  // Screen 1: ask count
   const form = blessed.form({
     parent: screen,
-    top: 3,
+    top: header.height,
     left: 'center',
     width: '80%',
     height: 9,
     border: 'line',
-    label: ' Anzahl ',
+    label: ' Anzahl Todos ',
     keys: true,
   });
 
@@ -139,7 +135,7 @@ function main() {
     parent: form,
     top: 1,
     left: 2,
-    content: 'Wie viele Punkte soll der Actionplan haben? (1..50)',
+    content: 'Wie viele Todos? (1..50)',
   });
 
   const input = blessed.textbox({
@@ -174,189 +170,32 @@ function main() {
     keys: true,
   });
 
-  // Screen 2: ask current index
-  const formCurrent = blessed.form({
-    parent: screen,
-    top: 3,
-    left: 'center',
-    width: '80%',
-    height: 9,
-    border: 'line',
-    label: ' Aktueller Punkt ',
-    keys: true,
-    hidden: true,
-  });
-
-  const currentQuestion = blessed.text({
-    parent: formCurrent,
-    top: 1,
-    left: 2,
-    content: 'Bei welchem Punkt arbeitest du gerade? (1..N)',
-  });
-
-  const currentInput = blessed.textbox({
-    parent: formCurrent,
-    top: 3,
-    left: 2,
-    width: 12,
-    height: 3,
-    border: 'line',
-    inputOnFocus: true,
-    value: '1',
-  });
-
-  const currentErrBox = blessed.box({
-    parent: formCurrent,
-    top: 6,
-    left: 2,
-    height: 1,
-    width: '100%',
-    tags: true,
-    content: '',
-  });
-
-  const currentNextBtn = blessed.button({
-    parent: formCurrent,
-    top: 3,
-    left: 16,
-    width: 12,
-    height: 3,
-    content: ' Next ',
-    border: 'line',
-    mouse: true,
-    keys: true,
-  });
-
-  let total = 0;
-  let currentIndex = 1;
-  let planNormalized = '';
-  let items = [];
+  let todos = [];
+  let activeIndex = 0;
   let generatedAt = new Date();
-  let output;
   let resultBox;
+  let listBox;
   let editor;
 
-  function saveEditorValue() {
-    if (!editor || !items.length) return;
-    const idx = clamp(currentIndex, 1, items.length);
-    items[idx - 1].text = editor.getValue() || '';
-  }
-
-  function refreshPlan(reason = 'init', message, options = {}) {
-    if (!items.length) return;
-    const rendered = renderTreePlan(items, currentIndex, generatedAt, true);
-    planNormalized = rendered.plain.replace(/\r\n/g, '\n');
-    if (output) {
-      output.setContent(rendered.screen);
-    }
-    if (!options.skipStatus) {
-      if (message) {
-        setStatus(message);
-      } else if (reason === 'current') {
-        setStatus(`Current: ${currentIndex}/${items.length}`);
-      } else {
-        setStatus(
-          `Generated plan: ${planNormalized.length} chars, ${items.length} items, current ${currentIndex}`,
-        );
-      }
-    }
-    screen.render();
-  }
-
-  async function copyPlan() {
-    if (!items.length) return;
-    saveEditorValue();
-    refreshPlan('edit', undefined, { skipStatus: true });
-    setStatus('Copying...');
-    const res = await writeClipboard(planNormalized);
-    if (res.ok) {
-      setStatus('Copied ✓');
-    } else {
-      osc52Copy(planNormalized);
-      setStatus('OSC52 fallback used');
-    }
-  }
-
-  function printPlan() {
-    if (!items.length) return;
-    saveEditorValue();
-    refreshPlan('edit', undefined, { skipStatus: true });
-    screen.destroy();
-    process.stdout.write(planNormalized + '\n');
-    process.exit(0);
-  }
-
-  function changeCurrent(delta) {
-    if (!output || !items.length) return;
-    const next = clamp(currentIndex + delta, 1, items.length);
-    if (next !== currentIndex) {
-      saveEditorValue();
-      currentIndex = next;
-      if (editor) {
-        editor.setValue(items[next - 1].text);
-        editor.focus();
-      }
-      refreshPlan('current');
-    } else {
-      setStatus(`Current: ${currentIndex}/${items.length}`);
-      screen.render();
-    }
-  }
-
-  function destroyResult() {
-    if (resultBox) {
-      resultBox.destroy();
-      resultBox = undefined;
-      output = undefined;
-      editor = undefined;
-    }
-  }
-
-  function restart() {
-    destroyResult();
-    items = [];
-    total = 0;
-    currentIndex = 1;
-    planNormalized = '';
-    generatedAt = new Date();
-    form.show();
-    formCurrent.hide();
-    input.setValue('');
-    errBox.setContent('');
-    currentInput.setValue('1');
-    currentErrBox.setContent('');
-    input.focus();
-    setStatus('Ready.');
-    screen.render();
-  }
-
-  function showResult(n) {
-    form.hide();
-    formCurrent.hide();
-
-    destroyResult();
-
-    total = n;
-    items = Array.from({ length: n }, (_, i) => ({ text: `Punkt ${i + 1}` }));
-    currentIndex = clamp(currentIndex, 1, total);
-
-    // Screen 3: output + actions
+  function buildEditorUI() {
+    if (resultBox) return;
     resultBox = blessed.box({
       parent: screen,
-      top: 3,
+      top: header.height,
       left: 'center',
       width: '90%',
       height: '80%',
       border: 'line',
-      label: ' Output ',
+      label: ' Todos ',
+      hidden: true,
     });
 
-    output = blessed.box({
+    listBox = blessed.box({
       parent: resultBox,
       top: 0,
       left: 0,
       width: '100%-2',
-      height: '100%-7',
+      height: '100%-6',
       border: 'line',
       scrollable: true,
       alwaysScroll: true,
@@ -369,14 +208,14 @@ function main() {
 
     blessed.text({
       parent: resultBox,
-      top: '100%-7',
+      top: '100%-6',
       left: 1,
-      content: 'Edit current:',
+      content: 'Edit:',
     });
 
     editor = blessed.textbox({
       parent: resultBox,
-      top: '100%-6',
+      top: '100%-5',
       left: 1,
       width: '100%-2',
       height: 3,
@@ -386,71 +225,9 @@ function main() {
       mouse: true,
     });
 
-    const bar = blessed.box({
-      parent: resultBox,
-      bottom: 0,
-      left: 0,
-      height: 3,
-      width: '100%',
-    });
-
-    const copyBtn = blessed.button({
-      parent: bar,
-      left: 1,
-      width: 12,
-      height: 3,
-      content: ' Copy ',
-      border: 'line',
-      mouse: true,
-      keys: true,
-    });
-
-    const stdoutBtn = blessed.button({
-      parent: bar,
-      left: 14,
-      width: 18,
-      height: 3,
-      content: ' Print stdout ',
-      border: 'line',
-      mouse: true,
-      keys: true,
-    });
-
-    const restartBtn = blessed.button({
-      parent: bar,
-      left: 33,
-      width: 12,
-      height: 3,
-      content: ' Restart ',
-      border: 'line',
-      mouse: true,
-      keys: true,
-    });
-
-    const exitBtn = blessed.button({
-      parent: bar,
-      right: 1,
-      width: 10,
-      height: 3,
-      content: ' Exit ',
-      border: 'line',
-      mouse: true,
-      keys: true,
-    });
-
-    copyBtn.on('press', copyPlan);
-
-    stdoutBtn.on('press', printPlan);
-
-    restartBtn.on('press', restart);
-
-    exitBtn.on('press', exit);
-
-    editor.setValue(items[currentIndex - 1].text);
-
     editor.on('submit', () => {
       saveEditorValue();
-      refreshPlan('edit', `Updated Punkt ${currentIndex}`);
+      refreshTodos('edit', `Saved Todo ${activeIndex + 1}`);
     });
 
     editor.key(['C-v', 'S-insert'], async () => {
@@ -459,17 +236,110 @@ function main() {
         const nextValue = (editor.getValue() || '') + res.text;
         editor.setValue(nextValue);
         saveEditorValue();
-        refreshPlan('edit', 'Pasted from clipboard');
+        refreshTodos('edit', 'Pasted from clipboard');
         editor.focus();
       } else {
         setStatus('Clipboard read failed; paste unavailable');
         screen.render();
       }
     });
+  }
 
-    // focus editor by default
-    editor.focus();
-    refreshPlan('init');
+  function saveEditorValue() {
+    if (!editor || !todos.length) return;
+    todos[activeIndex].text = editor.getValue() || '';
+  }
+
+  function refreshTodos(reason = 'init', message) {
+    if (!listBox || !todos.length) return;
+    const screenText = renderScreen(todos, activeIndex, generatedAt);
+    listBox.setContent(screenText);
+    if (message) {
+      setStatus(message);
+    } else if (reason === 'current') {
+      setStatus(`Aktiv: ${activeIndex + 1}/${todos.length}`);
+    } else {
+      setStatus(`Todos: ${todos.length}, aktiv ${activeIndex + 1}`);
+    }
+    screen.render();
+  }
+
+  function changeActive(delta) {
+    if (!todos.length) return;
+    saveEditorValue();
+    const next = clamp(activeIndex + delta, 0, todos.length - 1);
+    if (next !== activeIndex) {
+      activeIndex = next;
+      if (editor) {
+        editor.setValue(todos[activeIndex].text);
+        editor.focus();
+      }
+      refreshTodos('current');
+    } else {
+      setStatus(`Aktiv: ${activeIndex + 1}/${todos.length}`);
+    }
+  }
+
+  function toggleActiveDone() {
+    if (!todos.length) return;
+    saveEditorValue();
+    todos[activeIndex].done = !todos[activeIndex].done;
+    refreshTodos('toggle', todos[activeIndex].done ? 'Marked done' : 'Marked open');
+  }
+
+  async function copyTodos() {
+    if (!todos.length) return;
+    saveEditorValue();
+    const plain = renderPlain(todos, generatedAt);
+    const res = await writeClipboard(plain);
+    if (res.ok) {
+      setStatus('Copied ✓ (F4)');
+    } else {
+      osc52Copy(plain);
+      setStatus('Clipboard failed → OSC52 ✓');
+    }
+    screen.render();
+  }
+
+  function printTodos() {
+    if (!todos.length) return;
+    saveEditorValue();
+    const plain = renderPlain(todos, generatedAt);
+    screen.destroy();
+    process.stdout.write(plain + '\n');
+    process.exit(0);
+  }
+
+  function restart() {
+    saveEditorValue();
+    todos = [];
+    activeIndex = 0;
+    generatedAt = new Date();
+    if (resultBox) {
+      resultBox.hide();
+    }
+    form.show();
+    input.setValue('');
+    errBox.setContent('');
+    input.focus();
+    setStatus('Ready.');
+    screen.render();
+  }
+
+  function showTodos(count) {
+    buildEditorUI();
+    todos = Array.from({ length: count }, () => ({ text: '', done: false }));
+    activeIndex = 0;
+    generatedAt = new Date();
+    form.hide();
+    if (resultBox) {
+      resultBox.show();
+    }
+    if (editor) {
+      editor.setValue('');
+      editor.focus();
+    }
+    refreshTodos('init', `Todos bereit (${count})`);
   }
 
   function onNextCount() {
@@ -481,42 +351,21 @@ function main() {
       return;
     }
     errBox.setContent('');
-    total = n;
-    items = Array.from({ length: n }, (_, i) => ({ text: `Punkt ${i + 1}` }));
-    currentQuestion.setContent(`Bei welchem Punkt arbeitest du gerade? (1..${n})`);
-    currentInput.setValue('1');
-    form.hide();
-    formCurrent.show();
-    currentInput.focus();
-    screen.render();
-  }
-
-  function onNextCurrent() {
-    const raw = (currentInput.getValue() || '').trim();
-    const idx = Number(raw);
-    if (!Number.isInteger(idx) || idx < 1 || idx > total) {
-      currentErrBox.setContent(
-        `{red-fg}Bitte eine Zahl von 1 bis ${total} eingeben.{/red-fg}`,
-      );
-      screen.render();
-      return;
-    }
-    currentErrBox.setContent('');
-    currentIndex = idx;
-    generatedAt = new Date();
-    showResult(total);
+    showTodos(n);
   }
 
   nextBtn.on('press', onNextCount);
   input.on('submit', onNextCount);
 
-  currentNextBtn.on('press', onNextCurrent);
-  currentInput.on('submit', onNextCurrent);
-
-  screen.key(['up', 'k'], () => changeCurrent(-1));
-  screen.key(['down', 'j'], () => changeCurrent(1));
-  screen.key(['c'], () => copyPlan());
-  screen.key(['p'], () => printPlan());
+  screen.key(['up', 'k'], () => changeActive(-1));
+  screen.key(['down', 'j'], () => changeActive(1));
+  screen.key(['space'], () => toggleActiveDone());
+  screen.key(['f4'], () => {
+    copyTodos();
+  });
+  screen.key(['f5'], () => {
+    printTodos();
+  });
   screen.key(['r'], () => restart());
 
   input.focus();
