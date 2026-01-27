@@ -125,6 +125,8 @@ function main() {
     form.hide();
 
     const plan = buildPlan(n);
+    const planNormalized = plan.replace(/\r\n/g, '\n');
+    setStatus(`Generated plan: ${planNormalized.length} chars, ${n} items`);
 
     // Screen 2: output + actions
     const resultBox = blessed.box({
@@ -137,22 +139,23 @@ function main() {
       label: ' Output ',
     });
 
-    const textArea = blessed.textarea({
+    const output = blessed.box({
       parent: resultBox,
       top: 0,
       left: 0,
       width: '100%-2',
       height: '100%-4',
       border: 'line',
+      scrollable: true,
+      alwaysScroll: true,
       keys: true,
       mouse: true,
       vi: true,
       scrollbar: { ch: ' ', inverse: true },
-      content: plan,
     });
 
-    // readonly-ish: prevent edits
-    textArea.readOnly = true;
+    output.setContent(planNormalized);
+    output.scrollTo(0);
 
     const bar = blessed.box({
       parent: resultBox,
@@ -208,11 +211,11 @@ function main() {
 
     copyBtn.on('press', async () => {
       setStatus('Copying...');
-      const res = await writeClipboard(plan);
+      const res = await writeClipboard(planNormalized);
       if (res.ok) {
         setStatus('Copied ✓');
       } else {
-        osc52Copy(plan);
+        osc52Copy(planNormalized);
         setStatus('OSC52 fallback used');
       }
     });
@@ -220,24 +223,24 @@ function main() {
     stdoutBtn.on('press', () => {
       // Print AFTER UI exits so it doesn't mess up the screen
       screen.destroy();
-      process.stdout.write(plan + '\n');
+      process.stdout.write(planNormalized + '\n');
       process.exit(0);
     });
 
     restartBtn.on('press', () => {
-      resultBox.destroy();
       form.show();
       input.setValue('');
       errBox.setContent('');
       input.focus();
       setStatus('Ready.');
+      resultBox.destroy();
       screen.render();
     });
 
     exitBtn.on('press', exit);
 
     // focus output so selection works
-    textArea.focus();
+    output.focus();
     screen.render();
   }
 
