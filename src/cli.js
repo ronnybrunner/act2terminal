@@ -25,7 +25,7 @@ function formatDate(generatedAt) {
 }
 
 function renderPlain(todos, inProgressIndex, generatedAt) {
-  const header = `# Todos (${formatDate(generatedAt)})`;
+  const header = `# Actionplan (${formatDate(generatedAt)})`;
   const lines = todos.map((todo, idx) => {
     const isDone = todo.done;
     const isInProgress = !isDone && inProgressIndex === idx;
@@ -41,7 +41,7 @@ function renderPlain(todos, inProgressIndex, generatedAt) {
 }
 
 function renderScreen(todos, activeIndex, inProgressIndex, generatedAt) {
-  const header = `# Todos (${formatDate(generatedAt)})`;
+  const header = `# Actionplan (${formatDate(generatedAt)})`;
   const lines = todos.map((todo, idx) => {
     const isDone = todo.done;
     const isInProgress = !isDone && inProgressIndex === idx;
@@ -92,7 +92,7 @@ async function readClipboard() {
 function main() {
   const screen = blessed.screen({
     smartCSR: true,
-    title: 'Todo Checklist',
+    title: 'Actionplan',
     fullUnicode: true,
     dockBorders: true,
     mouse: true,
@@ -105,7 +105,7 @@ function main() {
     height: 3,
     width: '100%',
     tags: true,
-    content: ' {bold}Todo Checklist{/bold}  F4=Copy, F5=Print, F9=In progress, F10=Done, Enter=Save, ↑↓=Select (ESC/q/Ctrl+C = Exit)',
+    content: ' {bold}Actionplan{/bold}  F4=Copy, F5=Print, F9=In progress, F10=Done, Enter=Save, ↑↓=Select (ESC/q/Ctrl+C = Exit)',
     border: 'line',
   });
 
@@ -139,7 +139,7 @@ function main() {
     width: '80%',
     height: 9,
     border: 'line',
-    label: ' Anzahl Todos ',
+    label: ' Anzahl Actionplan-Punkte ',
     keys: true,
   });
 
@@ -147,7 +147,7 @@ function main() {
     parent: form,
     top: 1,
     left: 2,
-    content: 'Wie viele Todos? (1..50)',
+    content: 'Wie viele Actionplan-Punkte? (1..50)',
   });
 
   const input = blessed.textbox({
@@ -199,7 +199,7 @@ function main() {
       width: '90%',
       height: '80%',
       border: 'line',
-      label: ' Todos ',
+      label: ' Actionplan ',
       hidden: true,
     });
 
@@ -240,7 +240,7 @@ function main() {
 
     editor.on('submit', () => {
       saveEditorValue();
-      refreshTodos('edit', `Saved Todo ${activeIndex + 1}`);
+      refreshTodos('edit', `Saved Actionplan item ${activeIndex + 1}`);
     });
 
     editor.key(['C-v', 'S-insert'], async () => {
@@ -274,7 +274,7 @@ function main() {
       setStatus(`Aktiv: ${activeIndex + 1}/${todos.length} (In progress: ${progressLabel})`);
     } else {
       const progressLabel = inProgressIndex !== null ? inProgressIndex + 1 : '-';
-      setStatus(`Todos: ${todos.length}, aktiv ${activeIndex + 1} (In progress: ${progressLabel})`);
+      setStatus(`Actionplan: ${todos.length}, aktiv ${activeIndex + 1} (In progress: ${progressLabel})`);
     }
     screen.render();
   }
@@ -374,7 +374,7 @@ function main() {
       editor.setValue('');
       editor.focus();
     }
-    refreshTodos('init', `Todos bereit (${count})`);
+    refreshTodos('init', `Actionplan bereit (${count})`);
   }
 
   function onNextCount() {

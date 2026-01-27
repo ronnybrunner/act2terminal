@@ -1,6 +1,6 @@
 # act2terminal
 
-Terminal UI (TUI) wizard that asks for a number (1..50) and opens a Todo-checklist editor with clipboard export.
+Terminal UI (TUI) wizard that asks for a number (1..50) and opens an Actionplan checklist editor with clipboard export.
 
 ## Install
 
@@ -25,21 +25,21 @@ action
 
 Flow:
 
-1. Wizard Step 1: enter the number of todos (1..50).
+1. Wizard Step 1: enter the number of Actionplan items (1..50).
 2. The editor opens immediately with that many entries.
 
 Editor screen (checklist style):
 
-- Header: `# Todos (YYYY-MM-DD HH:mm)` with the timestamp frozen when the editor opens.
+- Header: `# Actionplan (YYYY-MM-DD HH:mm)` with the timestamp frozen when the editor opens.
 - Checklist lines: `[□]` / `[✓]` / `[■]` with an active marker `▸` and inverse highlight for the selected line. `[✓]` wins over `[■]` when both would apply.
-- Empty todos show a placeholder in the UI only (`<enter todo…>`); exports never include the placeholder and keep empty lines as `[□]`.
+- Empty items show a placeholder in the UI only (`<enter todo…>`); exports never include the placeholder and keep empty lines as `[□]`.
 
 Keybindings:
 
 - `Enter`: Save the current editor text.
-- `Up/Down` or `j/k`: Change active todo (current text is saved first).
-- `F9`: Toggle "in progress" for the active todo (`[■]`), only one entry at a time.
-- `F10`: Toggle done for the active todo (`[✓]`).
+- `Up/Down` or `j/k`: Change active item (current text is saved first).
+- `F9`: Toggle "in progress" for the active item (`[■]`), only one entry at a time.
+- `F10`: Toggle done for the active item (`[✓]`).
 - `F4`: Copy the plain checklist (no UI tags/marker) to the system clipboard; OSC52 fallback on failure.
 - `F5`: Print the plain checklist to stdout and exit.
 - `Ctrl+V` / `Shift+Insert`: Paste clipboard text into the editor.
