@@ -70,7 +70,7 @@ function main() {
 
   screen.key(['escape', 'q', 'C-c'], exit);
 
-  // Step 1: ask count
+  // Screen 1: ask count
   const form = blessed.form({
     parent: screen,
     top: 3,
@@ -126,6 +126,7 @@ function main() {
 
     const plan = buildPlan(n);
 
+    // Screen 2: output + actions
     const resultBox = blessed.box({
       parent: screen,
       top: 3,
@@ -209,10 +210,10 @@ function main() {
       setStatus('Copying...');
       const res = await writeClipboard(plan);
       if (res.ok) {
-        setStatus('Copied (system clipboard)');
+        setStatus('Copied ✓');
       } else {
         osc52Copy(plan);
-        setStatus('Clipboard failed -> OSC52 fallback emitted');
+        setStatus('OSC52 fallback used');
       }
     });
 

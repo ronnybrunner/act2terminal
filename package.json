@@ -1,17 +1,17 @@
 {
-  "name": "actionplan-wizard",
+  "name": "act2terminal",
   "version": "0.1.0",
-  "description": "Terminal UI wizard that generates an Actionplan checklist",
+  "description": "Terminal wizard that generates an Actionplan checklist",
   "license": "MIT",
   "type": "commonjs",
   "bin": {
-    "actionplan-wizard": "bin/actionplan-wizard.js"
+    "action": "src/cli.js"
   },
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "start": "node bin/actionplan-wizard.js"
+    "start": "node src/cli.js"
   },
   "dependencies": {
     "blessed": "^0.1.81",
