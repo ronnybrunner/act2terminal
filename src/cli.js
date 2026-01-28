@@ -1654,7 +1654,12 @@ function main() {
       return;
     }
 
-    if (key && key.name === 'enter' && key.shift) {
+    const isShiftEnter = key && (
+      (key.name === 'enter' && key.shift) ||
+      key.full === 'S-enter'
+    );
+
+    if (isShiftEnter) {
       const todo = state.todos[state.activeIndex];
       todo.text = `${todo.text}\n`;
       markDirty();
