@@ -23,7 +23,7 @@ const HEADER_STYLES = {
   plain: { label: 'Actionplan (YYYY-MM-DD HH:mm)', prefix: 'Actionplan' },
 };
 
-const HELP_LINE = 'Tab=Menu, F4=Copy, F5=Print, ↑↓=Select, Enter=Next, F8=Open, F9=In progress, F10=Done, ESC=Exit';
+const HELP_LINE = 'Tab=Menu, F4=Copy, F5=Print, ↑↓=Select, Enter=Next, F8=Open, F9=In progress, F10=Done, ESC/Ctrl+C/Ctrl+Q=Exit';
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -477,6 +477,11 @@ function main() {
   }
 
   screen.on('keypress', async (ch, key) => {
+    if (key && ((key.ctrl && key.name === 'c') || ((key.ctrl || key.meta) && key.name === 'q'))) {
+      exit();
+      return;
+    }
+
     if (key && key.name === 'tab') {
       if (menuOpen) {
         closeMenu();
@@ -515,7 +520,7 @@ function main() {
       return;
     }
 
-    if (key && (key.name === 'escape' || key.name === 'q' || (key.name === 'c' && key.ctrl))) {
+    if (key && key.name === 'escape') {
       exit();
       return;
     }

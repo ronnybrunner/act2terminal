@@ -62,14 +62,14 @@ Keybindings:
 
 - `Tab`: Open/close settings menu.
 - `Enter`: Move to the next item (adds a new item at the end up to 50).
-- `Up/Down` or `j/k`: Change active item.
+- `Up/Down` or `Ctrl/Alt + j/k`: Change active item.
 - `F8`: Set OPEN for the active item.
 - `F9`: Toggle "in progress" for the active item (only one at a time).
 - `F10`: Toggle DONE for the active item.
 - `F4`: Copy the plain checklist to the system clipboard (CRLF on Windows); OSC52 fallback on failure.
 - `F5`: Print the plain checklist to stdout and exit.
 - `Ctrl+V` / `Shift+Insert`: Paste clipboard text into the active item.
-- Exit anytime: `ESC` (also `q` / `Ctrl+C`).
+- Exit anytime: `ESC` or `Ctrl+C` (optionally `Ctrl/Alt+Q`).
 
 Clipboard note:
 
