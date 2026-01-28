@@ -1669,21 +1669,20 @@ function main() {
       return;
     }
 
-    const isShiftEnter = key && (
-      (key.name === 'enter' && key.shift) ||
-      key.full === 'S-enter'
-    );
-
-    if (isShiftEnter) {
-      const todo = state.todos[state.activeIndex];
-      todo.text = `${todo.text}\n`;
-      markDirty();
-      refreshScreen();
-      return;
-    }
-
     if (key && key.name === 'enter') {
-      // Insert new todo AFTER activeIndex
+      // Detect Shift+Enter: check key.shift strictly AND key.full for terminal compatibility
+      const isShiftEnter = key.shift === true || key.full === 'S-enter';
+
+      if (isShiftEnter) {
+        // Shift+Enter: Add newline (subpoint) to current todo
+        const todo = state.todos[state.activeIndex];
+        todo.text = `${todo.text}\n`;
+        markDirty();
+        refreshScreen();
+        return;
+      }
+
+      // Normal Enter: Insert new todo AFTER activeIndex
       if (state.todos.length < 50) {
         const insertAt = state.activeIndex + 1;
         state.todos.splice(insertAt, 0, { text: '', done: false });
