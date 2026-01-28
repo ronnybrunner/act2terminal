@@ -62,7 +62,7 @@ Keybindings:
 
 - `Tab`: Open/close settings menu.
 - `Enter`: Create a new todo directly below the current one (max 50 items).
-- `Shift+Enter`: Add a new line (subpoint) within the current todo.
+- `F3`: Add a subpoint (new line) within the current todo.
 - `Up/Down` or `Ctrl/Alt + j/k`: Change active item.
 - `F8`: Set OPEN for the active item.
 - `F9`: Toggle "in progress" for the active item (only one at a time).

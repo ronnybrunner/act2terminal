@@ -111,7 +111,7 @@ const HEADER_STYLES = {
   plain: { label: 'Actionplan <ID> (YYYY-MM-DD HH:mm)', prefix: 'Actionplan' },
 };
 
-const HELP_LINE = 'F1=Help, Tab=Menu, F2=New, F4=Copy, F5=Print, F6=Save, F7=Load, ↑↓=Select, Enter=Next, Shift+Enter=New line, F8=Open, F9=In progress, F10=Done, ESC/Ctrl+C/Ctrl+Q=Exit';
+const HELP_LINE = 'F1=Help, Tab=Menu, F2=New, F3=Subpoint, F4=Copy, F5=Print, F6=Save, F7=Load, ↑↓=Select, Enter=Next, F8=Open, F9=In progress, F10=Done, ESC/Ctrl+C/Ctrl+Q=Exit';
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -1460,8 +1460,8 @@ function main() {
   function renderHelpOverlay() {
     if (!helpBox) return;
     const lines = [
-      'Tab=Menu · F1=Help · F2=New · F4=Copy · F5=Print · F6=Save · F7=Load',
-      '↑↓ select · Enter next · Shift+Enter newline · Backspace delete',
+      'Tab=Menu · F1=Help · F2=New · F3=Subpoint · F4=Copy · F5=Print · F6=Save · F7=Load',
+      '↑↓ select · Enter next · F3 subpoint · Backspace delete',
       'F8 open · F9 in progress · F10 done',
       'Brackets on/off · Frame on/off · Wrap mode/width/indent (Tab menu)',
       'ESC/F1 closes · Ctrl+C/Ctrl+Q exits',
@@ -1669,20 +1669,17 @@ function main() {
       return;
     }
 
+    // F3: Add subpoint (newline) to current todo
+    if (key && key.name === 'f3') {
+      const todo = state.todos[state.activeIndex];
+      todo.text = `${todo.text}\n`;
+      markDirty();
+      refreshScreen('Subpoint added');
+      return;
+    }
+
+    // Enter: Insert new todo AFTER activeIndex
     if (key && key.name === 'enter') {
-      // Detect Shift+Enter: check key.shift strictly AND key.full for terminal compatibility
-      const isShiftEnter = key.shift === true || key.full === 'S-enter';
-
-      if (isShiftEnter) {
-        // Shift+Enter: Add newline (subpoint) to current todo
-        const todo = state.todos[state.activeIndex];
-        todo.text = `${todo.text}\n`;
-        markDirty();
-        refreshScreen();
-        return;
-      }
-
-      // Normal Enter: Insert new todo AFTER activeIndex
       if (state.todos.length < 50) {
         const insertAt = state.activeIndex + 1;
         state.todos.splice(insertAt, 0, { text: '', done: false });
