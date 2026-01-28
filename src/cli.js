@@ -18,6 +18,7 @@ const DEFAULT_FRAME_ENABLED = false;
 const DEFAULT_FRAME_STYLE = 'double';
 const DEFAULT_FRAME_PADDING_X = 1;
 const DEFAULT_FRAME_PADDING_Y = 0;
+const DEFAULT_FRAME_EXPORT_MODE = 'same';
 
 const FRAME_STYLES = {
   none: {
@@ -210,6 +211,9 @@ function normalizeState(data = {}) {
   const frameStyle = frameStyleRaw;
   const framePaddingX = clamp(Math.round(safeNumber(data.framePaddingX, DEFAULT_FRAME_PADDING_X)), 0, 8);
   const framePaddingY = clamp(Math.round(safeNumber(data.framePaddingY, DEFAULT_FRAME_PADDING_Y)), 0, 4);
+  const frameExportMode = ['same', 'ascii-only', 'off'].includes(data.frameExportMode)
+    ? data.frameExportMode
+    : DEFAULT_FRAME_EXPORT_MODE;
 
   return {
     todos,
@@ -227,6 +231,7 @@ function normalizeState(data = {}) {
     frameStyle,
     framePaddingX,
     framePaddingY,
+    frameExportMode,
     isDirty: false,
   };
 }
@@ -273,6 +278,7 @@ function serializeState(state) {
     frameStyle: state.frameStyle,
     framePaddingX: state.framePaddingX,
     framePaddingY: state.framePaddingY,
+    frameExportMode: state.frameExportMode,
     todos: state.todos.map((todo) => ({ text: todo.text, done: todo.done })),
   };
 }
@@ -364,6 +370,7 @@ function initState() {
     frameStyle: DEFAULT_FRAME_STYLE,
     framePaddingX: DEFAULT_FRAME_PADDING_X,
     framePaddingY: DEFAULT_FRAME_PADDING_Y,
+    frameExportMode: DEFAULT_FRAME_EXPORT_MODE,
   });
 }
 
@@ -474,7 +481,7 @@ function wrapParagraph(text, firstWidth, subsequentWidth) {
   return lines;
 }
 
-function wrapItemText(text, totalWidth, firstPrefix, indentPrefix, wrapMode, wrapIndentValue) {
+function wrapItemText(text, totalWidth, firstPrefix, indentPrefix, wrapMode, wrapIndentValue, options = {}) {
   const lines = [];
   const useWrap = wrapMode === 'hard' && Number.isFinite(totalWidth);
   const baseIndentPrefix = indentPrefix || repeat(' ', visibleLength(firstPrefix) + wrapIndentValue);
@@ -484,17 +491,36 @@ function wrapItemText(text, totalWidth, firstPrefix, indentPrefix, wrapMode, wra
 
   const paragraphs = String(text || '').split('\n');
   paragraphs.forEach((segment, idx) => {
-    const prefixForFirst = idx === 0 ? firstPrefix : baseIndentPrefix;
-    const firstLineWidth = idx === 0 ? firstWidth : otherWidth;
-    if (!useWrap) {
-      const prefixed = `${prefixForFirst}${segment}`;
-      lines.push(prefixed);
+    if (idx === 0) {
+      if (!useWrap) {
+        lines.push(`${firstPrefix}${segment}`);
+        return;
+      }
+      const wrapped = wrapParagraph(segment, Math.max(1, firstWidth), Math.max(1, otherWidth));
+      wrapped.forEach((part, partIdx) => {
+        const prefix = partIdx === 0 ? firstPrefix : baseIndentPrefix;
+        lines.push(`${prefix}${part}`);
+      });
       return;
     }
 
-    const wrapped = wrapParagraph(segment, Math.max(1, firstLineWidth), Math.max(1, otherWidth));
+    const bulletPrefix = options.subBulletPrefix || baseIndentPrefix;
+    const contPrefix = options.subContinuationPrefix || repeat(' ', visibleLength(bulletPrefix));
+    const bulletFirstWidth = useWrap ? totalWidth - visibleLength(bulletPrefix) : Infinity;
+    const bulletOtherWidth = useWrap ? totalWidth - visibleLength(contPrefix) : Infinity;
+
+    if (!useWrap) {
+      lines.push(`${bulletPrefix}${segment}`);
+      return;
+    }
+
+    const wrapped = wrapParagraph(
+      segment,
+      Math.max(1, bulletFirstWidth),
+      Math.max(1, bulletOtherWidth),
+    );
     wrapped.forEach((part, partIdx) => {
-      const prefix = (idx === 0 && partIdx === 0) ? firstPrefix : baseIndentPrefix;
+      const prefix = partIdx === 0 ? bulletPrefix : contPrefix;
       lines.push(`${prefix}${part}`);
     });
   });
@@ -542,7 +568,7 @@ function wrapAndFrame(lines, opts) {
   return framed.join('\n');
 }
 
-function renderPlain(state) {
+function renderPlain(state, frameOptions = {}) {
   const header = buildHeader(state);
   const wrapWidth = state.wrapMode === 'hard' ? state.wrapWidth : Infinity;
   const headerLines = wrapHeaderLine(header, wrapWidth, state.wrapMode);
@@ -554,6 +580,10 @@ function renderPlain(state) {
     const token = getToken(state, tokens, idx);
     const firstPrefix = formatStatusToken(token, effectiveBrackets);
     const indentPrefix = repeat(' ', visibleLength(firstPrefix) + state.wrapIndent);
+    const tokenWidth = visibleLength(firstPrefix);
+    const bulletIndent = Math.max(4, tokenWidth + 2);
+    const subBulletPrefix = `${repeat(' ', bulletIndent)}- `;
+    const subContinuationPrefix = repeat(' ', bulletIndent + 2);
     return wrapItemText(
       todo.text || '',
       wrapWidth,
@@ -561,17 +591,28 @@ function renderPlain(state) {
       indentPrefix,
       state.wrapMode,
       state.wrapIndent,
+      { subBulletPrefix, subContinuationPrefix },
     );
   });
 
   const assembled = [...headerLines, '', ...itemLines];
-  if (!state.frameEnabled || state.frameStyle === 'none') {
+  const frameMode = frameOptions.frameMode || 'same';
+  let frameEnabled = state.frameEnabled;
+  let frameStyle = state.frameStyle;
+  if (frameMode === 'off') {
+    frameEnabled = false;
+  } else if (frameMode === 'ascii-only') {
+    frameEnabled = true;
+    frameStyle = 'ascii';
+  }
+
+  if (!frameEnabled || frameStyle === 'none') {
     return assembled.join('\n');
   }
 
   return wrapAndFrame(assembled, {
-    frameEnabled: state.frameEnabled,
-    frameStyle: state.frameStyle,
+    frameEnabled,
+    frameStyle,
     framePaddingX: state.framePaddingX,
     framePaddingY: state.framePaddingY,
   });
@@ -606,6 +647,10 @@ function renderScreen(state, outputWidth) {
     const token = getToken(state, tokens, idx);
     const firstPrefix = `${marker} ${formatStatusToken(token, effectiveBrackets)}`;
     const indentPrefix = repeat(' ', visibleLength(firstPrefix) + state.wrapIndent);
+    const tokenWidth = visibleLength(firstPrefix);
+    const bulletIndent = Math.max(4, tokenWidth + 2);
+    const subBulletPrefix = `${repeat(' ', bulletIndent)}- `;
+    const subContinuationPrefix = repeat(' ', bulletIndent + 2);
     let wrapped = wrapItemText(
       hasText ? todo.text : '<type todo...>',
       wrapWidth,
@@ -613,6 +658,7 @@ function renderScreen(state, outputWidth) {
       indentPrefix,
       wrapModeForScreen,
       state.wrapIndent,
+      { subBulletPrefix, subContinuationPrefix },
     );
 
     if (!hasText) {
@@ -918,11 +964,13 @@ function main() {
   }
 
   async function copyTodos() {
-    const plain = renderPlain(state);
+    const frameMode = state.frameExportMode || 'same';
+    const plain = renderPlain(state, { frameMode });
     const plainForClipboard = plain.replace(/\n/g, '\r\n');
     const res = await writeClipboard(plainForClipboard);
     if (res.ok) {
-      setStatus('Copied ✓ (F4)');
+      const modeLabel = frameMode === 'ascii-only' ? 'ascii' : frameMode;
+      setStatus(`Copied ✓ (F4) [Frame: ${modeLabel}]`);
     } else {
       osc52Copy(plain);
       setStatus('Clipboard failed → OSC52 ✓');
@@ -950,6 +998,7 @@ function main() {
       { type: 'frameStyle', key: 'double', selectable: true },
       { type: 'framePaddingX', selectable: true },
       { type: 'framePaddingY', selectable: true },
+      { type: 'frameExport', selectable: true },
       { type: 'spacer' },
       { type: 'section', text: 'Wrap' },
       { type: 'wrapMode', key: 'off', selectable: true },
@@ -1017,6 +1066,15 @@ function main() {
         line = `Padding X: ${state.framePaddingX} (←/→)`;
       } else if (item.type === 'framePaddingY') {
         line = `Padding Y: ${state.framePaddingY} (←/→)`;
+      } else if (item.type === 'frameExport') {
+        const modes = ['same', 'ascii-only', 'off'];
+        const labels = {
+          same: 'same',
+          'ascii-only': 'ascii-only',
+          off: 'off',
+        };
+        const parts = modes.map((m) => (state.frameExportMode === m ? `(x) ${labels[m]}` : `( ) ${labels[m]}`));
+        line = `Frame (Clipboard): ${parts.join('  ')}`;
       } else if (item.type === 'wrapMode') {
         const radio = state.wrapMode === item.key ? '(x)' : '( )';
         line = `${radio} Wrap ${item.key}`;
@@ -1159,6 +1217,20 @@ function main() {
       return;
     }
 
+    if (selected.type === 'frameExport') {
+      const order = ['same', 'ascii-only', 'off'];
+      const idx = order.indexOf(state.frameExportMode);
+      const nextIdx = clamp(idx + delta, 0, order.length - 1);
+      const next = order[nextIdx];
+      if (next !== state.frameExportMode) {
+        state.frameExportMode = next;
+        markDirty();
+        refreshScreen(`Clipboard frame: ${next}`);
+      }
+      renderMenu();
+      return;
+    }
+
     if (selected.type === 'wrapWidth') {
       if (state.wrapMode !== 'hard') {
         renderMenu();
@@ -1235,6 +1307,19 @@ function main() {
         state.wrapMode = selected.key;
         markDirty();
         refreshScreen(`Wrap: ${selected.key}`);
+      }
+      renderMenu();
+      return;
+    }
+
+    if (selected.type === 'frameExport') {
+      const order = ['same', 'ascii-only', 'off'];
+      const idx = order.indexOf(state.frameExportMode);
+      const next = order[(idx + 1) % order.length];
+      if (next !== state.frameExportMode) {
+        state.frameExportMode = next;
+        markDirty();
+        refreshScreen(`Clipboard frame: ${next}`);
       }
       renderMenu();
       return;
