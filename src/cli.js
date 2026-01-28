@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const blessed = require('blessed');
 
 const DEFAULT_COUNT = 2;
@@ -19,11 +22,11 @@ const PRESETS = {
 };
 
 const HEADER_STYLES = {
-  markdown: { label: '# Actionplan (YYYY-MM-DD HH:mm)', prefix: '# Actionplan' },
-  plain: { label: 'Actionplan (YYYY-MM-DD HH:mm)', prefix: 'Actionplan' },
+  markdown: { label: '# Actionplan <ID> (YYYY-MM-DD HH:mm)', prefix: '# Actionplan' },
+  plain: { label: 'Actionplan <ID> (YYYY-MM-DD HH:mm)', prefix: 'Actionplan' },
 };
 
-const HELP_LINE = 'Tab=Menu, F4=Copy, F5=Print, ↑↓=Select, Enter=Next, F8=Open, F9=In progress, F10=Done, ESC/Ctrl+C/Ctrl+Q=Exit';
+const HELP_LINE = 'Tab=Menu, F2=New, F4=Copy, F5=Print, F6=Save, F7=Load, ↑↓=Select, Enter=Next, F8=Open, F9=In progress, F10=Done, ESC/Ctrl+C/Ctrl+Q=Exit';
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -42,20 +45,187 @@ function formatDate(generatedAt) {
   return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
-function initState() {
+function formatIdTimestamp(date) {
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  return `${year}${month}${day}-${hours}${minutes}`;
+}
+
+function generateRandomSuffix() {
+  const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return suffix.padEnd(4, '0').slice(0, 4);
+}
+
+function generateId(date = new Date()) {
+  return `${formatIdTimestamp(date)}-${generateRandomSuffix()}`;
+}
+
+function ensureTodos(rawTodos) {
+  if (!Array.isArray(rawTodos) || rawTodos.length === 0) {
+    return Array.from({ length: DEFAULT_COUNT }, () => ({ text: '', done: false }));
+  }
+  return rawTodos.map((todo) => ({
+    text: typeof todo?.text === 'string' ? todo.text : '',
+    done: Boolean(todo?.done),
+  }));
+}
+
+function normalizeState(data = {}) {
+  const parsedDate = data.generatedAt ? new Date(data.generatedAt) : new Date();
+  const generatedAt = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+  const todos = ensureTodos(data.todos);
+  const activeIndex = clamp(
+    typeof data.activeIndex === 'number' ? data.activeIndex : 0,
+    0,
+    Math.max(0, todos.length - 1),
+  );
+  const validInProgress = typeof data.inProgressIndex === 'number'
+    ? clamp(data.inProgressIndex, 0, Math.max(0, todos.length - 1))
+    : null;
+  const presetKey = PRESETS[data.presetKey] ? data.presetKey : DEFAULT_PRESET;
+  const headerStyleKey = HEADER_STYLES[data.headerStyle]
+    ? data.headerStyle
+    : (HEADER_STYLES[data.headerStyleKey] ? data.headerStyleKey : DEFAULT_HEADER_STYLE);
+  const id = data.id || generateId(generatedAt);
+
   return {
-    todos: Array.from({ length: DEFAULT_COUNT }, () => ({ text: '', done: false })),
-    activeIndex: 0,
-    inProgressIndex: null,
-    generatedAt: new Date(),
-    presetKey: DEFAULT_PRESET,
-    headerStyleKey: DEFAULT_HEADER_STYLE,
+    todos,
+    activeIndex,
+    inProgressIndex: validInProgress,
+    generatedAt,
+    presetKey,
+    headerStyleKey,
+    id,
   };
+}
+
+let storageDir;
+let storageError;
+
+function getStorageDir() {
+  if (storageDir) {
+    return { dir: storageDir, error: null };
+  }
+  const base = process.env.APPDATA
+    ? path.join(process.env.APPDATA, 'act2terminal', 'actionplans')
+    : path.join(os.homedir(), '.act2terminal', 'actionplans');
+  try {
+    fs.mkdirSync(base, { recursive: true });
+    storageDir = base;
+    storageError = null;
+    return { dir: storageDir, error: null };
+  } catch (err) {
+    storageError = err;
+    return { dir: null, error: err };
+  }
+}
+
+function getPlanFilePath(id) {
+  const { dir } = getStorageDir();
+  if (!dir) return null;
+  return path.join(dir, `${id}.json`);
+}
+
+function serializeState(state) {
+  return {
+    id: state.id,
+    generatedAt: state.generatedAt.toISOString(),
+    presetKey: state.presetKey,
+    headerStyle: state.headerStyleKey,
+    inProgressIndex: state.inProgressIndex,
+    todos: state.todos.map((todo) => ({ text: todo.text, done: todo.done })),
+  };
+}
+
+function savePlan(state) {
+  const filePath = getPlanFilePath(state.id);
+  if (!filePath) return { ok: false, error: storageError || new Error('Storage unavailable') };
+  try {
+    const data = JSON.stringify(serializeState(state), null, 2);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, data, 'utf8');
+    return { ok: true, filePath };
+  } catch (err) {
+    return { ok: false, error: err };
+  }
+}
+
+function loadPlanFromFile(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return { ok: true, state: normalizeState(parsed) };
+  } catch (err) {
+    return { ok: false, error: err };
+  }
+}
+
+function listSavedPlans() {
+  const { dir, error } = getStorageDir();
+  if (!dir) return { ok: false, error };
+  let files;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    files = fs.readdirSync(dir).filter((file) => file.endsWith('.json'));
+  } catch (err) {
+    return { ok: false, error: err };
+  }
+
+  const plans = [];
+  for (const file of files) {
+    try {
+      const filePath = path.join(dir, file);
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const parsed = JSON.parse(raw);
+      const generatedAt = parsed.generatedAt ? new Date(parsed.generatedAt) : null;
+      plans.push({
+        id: parsed.id || path.basename(file, '.json'),
+        generatedAt,
+        todoCount: Array.isArray(parsed.todos) ? parsed.todos.length : 0,
+        filePath,
+      });
+    } catch (err) {
+      // ignore malformed files
+    }
+  }
+
+  plans.sort((a, b) => {
+    const timeA = a.generatedAt ? a.generatedAt.getTime() : 0;
+    const timeB = b.generatedAt ? b.generatedAt.getTime() : 0;
+    if (timeA !== timeB) return timeB - timeA;
+    return a.id < b.id ? 1 : -1;
+  });
+
+  return { ok: true, plans };
+}
+
+function deletePlanFile(filePath) {
+  try {
+    fs.unlinkSync(filePath);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err };
+  }
+}
+
+function initState() {
+  const generatedAt = new Date();
+  return normalizeState({
+    generatedAt,
+    id: generateId(generatedAt),
+    todos: Array.from({ length: DEFAULT_COUNT }, () => ({ text: '', done: false })),
+    presetKey: DEFAULT_PRESET,
+    headerStyle: DEFAULT_HEADER_STYLE,
+  });
 }
 
 function buildHeader(state) {
   const style = HEADER_STYLES[state.headerStyleKey] || HEADER_STYLES.markdown;
-  return `${style.prefix} (${formatDate(state.generatedAt)})`;
+  const id = state.id || '????';
+  return `${style.prefix} ${id} (${formatDate(state.generatedAt)})`;
 }
 
 function getPreset(state) {
@@ -183,7 +353,7 @@ function main() {
     mouse: true,
   });
 
-  const state = initState();
+  let state = initState();
 
   blessed.box({
     parent: screen,
@@ -230,6 +400,16 @@ function main() {
   let menuBox;
   let menuOpen = false;
   let menuSelection = 0;
+
+  let loadBox;
+  let loadOpen = false;
+  let loadSelection = 0;
+  let savedPlans = [];
+
+  const initialStorage = getStorageDir();
+  const initialStatusMessage = initialStorage.error
+    ? `Storage unavailable: ${initialStorage.error.message}`
+    : undefined;
 
   function setStatus(msg) {
     status.setContent(` ${msg}`);
@@ -309,6 +489,44 @@ function main() {
     refreshScreen(`Cleared DONE: ${state.activeIndex + 1}`);
   }
 
+  function startNewPlan() {
+    state = initState();
+    closeMenu();
+    closeLoadOverlay();
+    refreshScreen(`New plan ${state.id}`);
+  }
+
+  function handleSavePlan() {
+    const result = savePlan(state);
+    if (result.ok) {
+      refreshScreen(`Saved ${state.id}`);
+      return;
+    }
+    const message = result.error?.message || 'Save failed';
+    refreshScreen(`Save failed: ${message}`);
+  }
+
+  function applyLoadedState(nextState) {
+    state = nextState;
+    state.activeIndex = clamp(state.activeIndex, 0, Math.max(0, state.todos.length - 1));
+    if (state.inProgressIndex !== null && state.inProgressIndex >= state.todos.length) {
+      state.inProgressIndex = null;
+    }
+  }
+
+  function handleLoadFile(filePath) {
+    const loaded = loadPlanFromFile(filePath);
+    if (!loaded.ok) {
+      const message = loaded.error?.message || 'Load failed';
+      refreshScreen(`Load failed: ${message}`);
+      return;
+    }
+    applyLoadedState(loaded.state);
+    closeLoadOverlay();
+    closeMenu();
+    refreshScreen(`Loaded ${state.id}`);
+  }
+
   async function copyTodos() {
     const plain = renderPlain(state);
     const plainForClipboard = plain.replace(/\n/g, '\r\n');
@@ -340,6 +558,10 @@ function main() {
       { type: 'header', key: 'markdown', selectable: true },
       { type: 'header', key: 'plain', selectable: true },
       { type: 'spacer' },
+      { type: 'section', text: 'Actions' },
+      { type: 'action', id: 'save', label: 'Save (F6)', selectable: true },
+      { type: 'action', id: 'load', label: 'Load (F7)', selectable: true },
+      { type: 'action', id: 'new', label: 'New Plan (F2)', selectable: true },
       { type: 'action', id: 'refresh', label: 'Refresh timestamp', selectable: true },
     ];
   }
@@ -474,11 +696,159 @@ function main() {
       refreshScreen('Timestamp refreshed');
       renderMenu();
     }
+
+    if (selected.type === 'action' && selected.id === 'save') {
+      handleSavePlan();
+      renderMenu();
+    }
+
+    if (selected.type === 'action' && selected.id === 'load') {
+      closeMenu();
+      openLoadOverlay();
+    }
+
+    if (selected.type === 'action' && selected.id === 'new') {
+      startNewPlan();
+      renderMenu();
+    }
+  }
+
+  function buildLoadOverlay() {
+    loadBox = blessed.box({
+      parent: screen,
+      top: 'center',
+      left: 'center',
+      width: '70%',
+      height: '70%',
+      border: 'line',
+      label: ' Load plan ',
+      tags: true,
+      keys: true,
+      mouse: true,
+      scrollable: true,
+      alwaysScroll: true,
+      hidden: true,
+      scrollbar: { ch: ' ', inverse: true },
+    });
+  }
+
+  function renderLoadOverlay() {
+    if (!loadBox) return;
+    if (!savedPlans.length) {
+      loadBox.setContent('No saved plans');
+      screen.render();
+      return;
+    }
+
+    loadSelection = clamp(loadSelection, 0, Math.max(0, savedPlans.length - 1));
+    const lines = savedPlans.map((plan, idx) => {
+      const validDate = plan.generatedAt instanceof Date && !Number.isNaN(plan.generatedAt.getTime());
+      const dateText = validDate ? formatDate(plan.generatedAt) : 'unknown time';
+      const line = `${plan.id}  ${dateText}  (${plan.todoCount} items)`;
+      return idx === loadSelection ? `{inverse}${line}{/inverse}` : line;
+    });
+    loadBox.setContent(lines.join('\n'));
+    screen.render();
+  }
+
+  function openLoadOverlay() {
+    const list = listSavedPlans();
+    if (!list.ok) {
+      const message = list.error?.message || 'Load failed';
+      refreshScreen(`Load failed: ${message}`);
+      return;
+    }
+
+    savedPlans = list.plans;
+    loadSelection = 0;
+
+    if (!loadBox) buildLoadOverlay();
+    loadOpen = true;
+    loadBox.show();
+    loadBox.focus();
+    renderLoadOverlay();
+    setStatus('Load: Enter=load, Del=delete, ESC=close');
+    screen.render();
+  }
+
+  function closeLoadOverlay() {
+    if (!loadOpen) return;
+    loadOpen = false;
+    if (loadBox) loadBox.hide();
+    refreshScreen();
+  }
+
+  function moveLoadSelection(delta) {
+    if (!loadOpen) return;
+    if (!savedPlans.length) {
+      renderLoadOverlay();
+      return;
+    }
+    const next = clamp(loadSelection + delta, 0, Math.max(0, savedPlans.length - 1));
+    if (next !== loadSelection) {
+      loadSelection = next;
+      renderLoadOverlay();
+    }
+  }
+
+  function handleLoadOverlayEnter() {
+    if (!loadOpen) return;
+    if (!savedPlans.length) {
+      closeLoadOverlay();
+      refreshScreen('No saved plans');
+      return;
+    }
+    const selected = savedPlans[loadSelection];
+    handleLoadFile(selected.filePath);
+  }
+
+  function handleLoadOverlayDelete() {
+    if (!loadOpen || !savedPlans.length) return;
+    const target = savedPlans[loadSelection];
+    const result = deletePlanFile(target.filePath);
+    if (!result.ok) {
+      const message = result.error?.message || 'Delete failed';
+      refreshScreen(`Delete failed: ${message}`);
+      renderLoadOverlay();
+      return;
+    }
+    savedPlans.splice(loadSelection, 1);
+    if (loadSelection >= savedPlans.length) {
+      loadSelection = Math.max(0, savedPlans.length - 1);
+    }
+    renderLoadOverlay();
+    setStatus(`Deleted ${target.id}`);
+    screen.render();
   }
 
   screen.on('keypress', async (ch, key) => {
     if (key && ((key.ctrl && key.name === 'c') || ((key.ctrl || key.meta) && key.name === 'q'))) {
       exit();
+      return;
+    }
+
+    if (loadOpen) {
+      if (!key) return;
+      if (key.name === 'escape' || key.name === 'tab') {
+        closeLoadOverlay();
+        return;
+      }
+      if (key.name === 'up' || ((key.meta || key.ctrl) && key.name === 'k')) {
+        moveLoadSelection(-1);
+        return;
+      }
+      if (key.name === 'down' || ((key.meta || key.ctrl) && key.name === 'j')) {
+        moveLoadSelection(1);
+        return;
+      }
+      if (key.name === 'enter') {
+        handleLoadOverlayEnter();
+        return;
+      }
+      if (key.name === 'delete') {
+        handleLoadOverlayDelete();
+        return;
+      }
       return;
     }
 
@@ -488,6 +858,22 @@ function main() {
       } else {
         openMenu();
       }
+      return;
+    }
+
+    if (key && key.name === 'f7') {
+      closeMenu();
+      openLoadOverlay();
+      return;
+    }
+
+    if (key && key.name === 'f6') {
+      handleSavePlan();
+      return;
+    }
+
+    if (key && key.name === 'f2') {
+      startNewPlan();
       return;
     }
 
@@ -600,7 +986,7 @@ function main() {
     }
   });
 
-  refreshScreen();
+  refreshScreen(initialStatusMessage);
 }
 
 main();
