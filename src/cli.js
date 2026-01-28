@@ -10,6 +10,42 @@ const DEFAULT_COUNT = 2;
 const DEFAULT_PRESET = 'squares';
 const DEFAULT_HEADER_STYLE = 'markdown';
 
+const DEFAULT_WRAP_MODE = 'soft';
+const DEFAULT_WRAP_WIDTH = 80;
+const DEFAULT_WRAP_INDENT = 2;
+
+const DEFAULT_FRAME_ENABLED = false;
+const DEFAULT_FRAME_STYLE = 'double';
+const DEFAULT_FRAME_PADDING_X = 1;
+const DEFAULT_FRAME_PADDING_Y = 0;
+
+const FRAME_STYLES = {
+  none: {
+    label: 'Off',
+    corners: [' ', ' ', ' ', ' '],
+    horiz: ' ',
+    vert: ' ',
+  },
+  ascii: {
+    label: 'ASCII',
+    corners: ['+', '+', '+', '+'],
+    horiz: '-',
+    vert: '|',
+  },
+  single: {
+    label: 'Single',
+    corners: ['┌', '┐', '└', '┘'],
+    horiz: '─',
+    vert: '│',
+  },
+  double: {
+    label: 'Double',
+    corners: ['╔', '╗', '╚', '╝'],
+    horiz: '═',
+    vert: '║',
+  },
+};
+
 const PRESETS = {
   squares: {
     label: 'Squares',
@@ -74,7 +110,7 @@ const HEADER_STYLES = {
   plain: { label: 'Actionplan <ID> (YYYY-MM-DD HH:mm)', prefix: 'Actionplan' },
 };
 
-const HELP_LINE = 'Tab=Menu, F2=New, F4=Copy, F5=Print, F6=Save, F7=Load, ↑↓=Select, Enter=Next, F8=Open, F9=In progress, F10=Done, ESC/Ctrl+C/Ctrl+Q=Exit';
+const HELP_LINE = 'F1=Help, Tab=Menu, F2=New, F4=Copy, F5=Print, F6=Save, F7=Load, ↑↓=Select, Enter=Next, Shift+Enter=New line, F8=Open, F9=In progress, F10=Done, ESC/Ctrl+C/Ctrl+Q=Exit';
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -82,6 +118,31 @@ function clamp(value, min, max) {
 
 function pad(num) {
   return num.toString().padStart(2, '0');
+}
+
+function repeat(ch, count) {
+  return count > 0 ? ch.repeat(count) : '';
+}
+
+function stripTags(text) {
+  return text.replace(/\{\/?.*?\}/g, '');
+}
+
+function visibleLength(text) {
+  return stripTags(text).length;
+}
+
+function safeNumber(value, fallback) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function coerceWrapMode(mode) {
+  return mode === 'off' || mode === 'hard' ? mode : DEFAULT_WRAP_MODE;
+}
+
+function coerceFrameStyle(style) {
+  return FRAME_STYLES[style] ? style : DEFAULT_FRAME_STYLE;
 }
 
 function formatDate(generatedAt) {
@@ -139,6 +200,16 @@ function normalizeState(data = {}) {
     : (HEADER_STYLES[data.headerStyleKey] ? data.headerStyleKey : DEFAULT_HEADER_STYLE);
   const id = data.id || generateId(generatedAt);
   const showBrackets = typeof data.showBrackets === 'boolean' ? data.showBrackets : true;
+  const wrapMode = coerceWrapMode(data.wrapMode);
+  const wrapWidth = clamp(Math.round(safeNumber(data.wrapWidth, DEFAULT_WRAP_WIDTH)), 40, 200);
+  const wrapIndent = clamp(Math.round(safeNumber(data.wrapIndent, DEFAULT_WRAP_INDENT)), 0, 12);
+  const frameEnabled = typeof data.frameEnabled === 'boolean'
+    ? data.frameEnabled
+    : DEFAULT_FRAME_ENABLED;
+  const frameStyleRaw = coerceFrameStyle(data.frameStyle);
+  const frameStyle = frameStyleRaw;
+  const framePaddingX = clamp(Math.round(safeNumber(data.framePaddingX, DEFAULT_FRAME_PADDING_X)), 0, 8);
+  const framePaddingY = clamp(Math.round(safeNumber(data.framePaddingY, DEFAULT_FRAME_PADDING_Y)), 0, 4);
 
   return {
     todos,
@@ -149,6 +220,14 @@ function normalizeState(data = {}) {
     headerStyleKey,
     id,
     showBrackets,
+    wrapMode,
+    wrapWidth,
+    wrapIndent,
+    frameEnabled,
+    frameStyle,
+    framePaddingX,
+    framePaddingY,
+    isDirty: false,
   };
 }
 
@@ -187,6 +266,13 @@ function serializeState(state) {
     headerStyle: state.headerStyleKey,
     inProgressIndex: state.inProgressIndex,
     showBrackets: state.showBrackets,
+    wrapMode: state.wrapMode,
+    wrapWidth: state.wrapWidth,
+    wrapIndent: state.wrapIndent,
+    frameEnabled: state.frameEnabled,
+    frameStyle: state.frameStyle,
+    framePaddingX: state.framePaddingX,
+    framePaddingY: state.framePaddingY,
     todos: state.todos.map((todo) => ({ text: todo.text, done: todo.done })),
   };
 }
@@ -271,6 +357,13 @@ function initState() {
     presetKey: DEFAULT_PRESET,
     headerStyle: DEFAULT_HEADER_STYLE,
     showBrackets: true,
+    wrapMode: DEFAULT_WRAP_MODE,
+    wrapWidth: DEFAULT_WRAP_WIDTH,
+    wrapIndent: DEFAULT_WRAP_INDENT,
+    frameEnabled: DEFAULT_FRAME_ENABLED,
+    frameStyle: DEFAULT_FRAME_STYLE,
+    framePaddingX: DEFAULT_FRAME_PADDING_X,
+    framePaddingY: DEFAULT_FRAME_PADDING_Y,
   });
 }
 
@@ -318,35 +411,234 @@ function formatStatusToken(token, effectiveBrackets) {
   return `${plainCore} `;
 }
 
-function renderPlain(state) {
-  const header = buildHeader(state);
-  const preset = getPreset(state);
-  const tokens = getDisplayTokens(preset);
-  const effectiveBrackets = getEffectiveBrackets(state, preset);
-  const lines = state.todos.map((todo, idx) => {
-    const token = getToken(state, tokens, idx);
-    const text = todo.text ? todo.text : '';
-    return `${formatStatusToken(token, effectiveBrackets)}${text}`;
-  });
-  return [header, '', ...lines].join('\n');
+function wrapParagraph(text, firstWidth, subsequentWidth) {
+  if (!Number.isFinite(firstWidth) || firstWidth <= 0) {
+    return [text];
+  }
+
+  const lines = [];
+  const words = text.split(' ');
+  let current = '';
+  let limit = firstWidth;
+  const otherLimit = Number.isFinite(subsequentWidth) && subsequentWidth > 0
+    ? subsequentWidth
+    : firstWidth;
+
+  function flush() {
+    lines.push(current);
+    current = '';
+    limit = otherLimit;
+  }
+
+  for (const word of words) {
+    const effectiveWord = word;
+    if (current === '') {
+      if (effectiveWord.length <= limit) {
+        current = effectiveWord;
+      } else {
+        let remaining = effectiveWord;
+        while (remaining.length > limit && limit > 0) {
+          lines.push(remaining.slice(0, limit));
+          remaining = remaining.slice(limit);
+          limit = otherLimit;
+        }
+        current = remaining;
+      }
+      continue;
+    }
+
+    const nextLength = current.length + 1 + effectiveWord.length;
+    if (nextLength <= limit) {
+      current = `${current} ${effectiveWord}`;
+      continue;
+    }
+
+    flush();
+    if (effectiveWord.length <= limit) {
+      current = effectiveWord;
+    } else {
+      let remaining = effectiveWord;
+      while (remaining.length > limit && limit > 0) {
+        lines.push(remaining.slice(0, limit));
+        remaining = remaining.slice(limit);
+        limit = otherLimit;
+      }
+      current = remaining;
+    }
+  }
+
+  if (current !== '' || !lines.length) {
+    lines.push(current);
+  }
+
+  return lines;
 }
 
-function renderScreen(state) {
+function wrapItemText(text, totalWidth, firstPrefix, indentPrefix, wrapMode, wrapIndentValue) {
+  const lines = [];
+  const useWrap = wrapMode === 'hard' && Number.isFinite(totalWidth);
+  const baseIndentPrefix = indentPrefix || repeat(' ', visibleLength(firstPrefix) + wrapIndentValue);
+  const indentWidth = visibleLength(baseIndentPrefix);
+  const firstWidth = useWrap ? totalWidth - visibleLength(firstPrefix) : Infinity;
+  const otherWidth = useWrap ? totalWidth - indentWidth : Infinity;
+
+  const paragraphs = String(text || '').split('\n');
+  paragraphs.forEach((segment, idx) => {
+    const prefixForFirst = idx === 0 ? firstPrefix : baseIndentPrefix;
+    const firstLineWidth = idx === 0 ? firstWidth : otherWidth;
+    if (!useWrap) {
+      const prefixed = `${prefixForFirst}${segment}`;
+      lines.push(prefixed);
+      return;
+    }
+
+    const wrapped = wrapParagraph(segment, Math.max(1, firstLineWidth), Math.max(1, otherWidth));
+    wrapped.forEach((part, partIdx) => {
+      const prefix = (idx === 0 && partIdx === 0) ? firstPrefix : baseIndentPrefix;
+      lines.push(`${prefix}${part}`);
+    });
+  });
+
+  return lines;
+}
+
+function wrapHeaderLine(text, totalWidth, wrapMode) {
+  if (wrapMode !== 'hard' || !Number.isFinite(totalWidth)) {
+    return [text];
+  }
+  return wrapParagraph(text, Math.max(1, totalWidth), Math.max(1, totalWidth));
+}
+
+function wrapAndFrame(lines, opts) {
+  const frameEnabled = opts?.frameEnabled;
+  const frameStyleKey = opts?.frameStyle;
+  if (!frameEnabled || frameStyleKey === 'none') {
+    return lines.join('\n');
+  }
+
+  const style = FRAME_STYLES[frameStyleKey] || FRAME_STYLES[DEFAULT_FRAME_STYLE];
+  const paddingX = clamp(safeNumber(opts.framePaddingX, DEFAULT_FRAME_PADDING_X), 0, 8);
+  const paddingY = clamp(safeNumber(opts.framePaddingY, DEFAULT_FRAME_PADDING_Y), 0, 4);
+  const maxContent = lines.reduce((max, line) => Math.max(max, visibleLength(line)), 0);
+  const innerWidth = maxContent + paddingX * 2;
+  const top = `${style.corners[0]}${repeat(style.horiz, innerWidth)}${style.corners[1]}`;
+  const bottom = `${style.corners[2]}${repeat(style.horiz, innerWidth)}${style.corners[3]}`;
+  const paddingLine = `${style.vert}${repeat(' ', innerWidth)}${style.vert}`;
+  const framed = [];
+  framed.push(top);
+  for (let i = 0; i < paddingY; i += 1) {
+    framed.push(paddingLine);
+  }
+  lines.forEach((line) => {
+    const contentLen = visibleLength(line);
+    const rightPad = innerWidth - paddingX - contentLen;
+    const padded = `${style.vert}${repeat(' ', paddingX)}${line}${repeat(' ', Math.max(0, rightPad))}${style.vert}`;
+    framed.push(padded);
+  });
+  for (let i = 0; i < paddingY; i += 1) {
+    framed.push(paddingLine);
+  }
+  framed.push(bottom);
+  return framed.join('\n');
+}
+
+function renderPlain(state) {
+  const header = buildHeader(state);
+  const wrapWidth = state.wrapMode === 'hard' ? state.wrapWidth : Infinity;
+  const headerLines = wrapHeaderLine(header, wrapWidth, state.wrapMode);
+  const preset = getPreset(state);
+  const tokens = getDisplayTokens(preset);
+  const effectiveBrackets = getEffectiveBrackets(state, preset);
+
+  const itemLines = state.todos.flatMap((todo, idx) => {
+    const token = getToken(state, tokens, idx);
+    const firstPrefix = formatStatusToken(token, effectiveBrackets);
+    const indentPrefix = repeat(' ', visibleLength(firstPrefix) + state.wrapIndent);
+    return wrapItemText(
+      todo.text || '',
+      wrapWidth,
+      firstPrefix,
+      indentPrefix,
+      state.wrapMode,
+      state.wrapIndent,
+    );
+  });
+
+  const assembled = [...headerLines, '', ...itemLines];
+  if (!state.frameEnabled || state.frameStyle === 'none') {
+    return assembled.join('\n');
+  }
+
+  return wrapAndFrame(assembled, {
+    frameEnabled: state.frameEnabled,
+    frameStyle: state.frameStyle,
+    framePaddingX: state.framePaddingX,
+    framePaddingY: state.framePaddingY,
+  });
+}
+
+function renderScreen(state, outputWidth) {
   const header = buildHeader(state);
   const preset = getPreset(state);
   const tokens = getDisplayTokens(preset);
   const effectiveBrackets = getEffectiveBrackets(state, preset);
-  const lines = state.todos.map((todo, idx) => {
-    const token = getToken(state, tokens, idx);
+  const estimatedWidth = typeof outputWidth === 'number' ? outputWidth : 80;
+  const paddingCost = state.frameEnabled && state.frameStyle !== 'none'
+    ? (state.framePaddingX * 2 + 2)
+    : 0;
+  const availableWidth = Math.max(20, estimatedWidth - paddingCost);
+  const wrapModeForScreen = state.wrapMode === 'off' ? 'off' : 'hard';
+  const wrapWidth = state.wrapMode === 'off'
+    ? Infinity
+    : Math.max(10, state.wrapMode === 'hard'
+      ? Math.min(state.wrapWidth, availableWidth)
+      : availableWidth);
+
+  const headerLines = wrapHeaderLine(
+    header,
+    wrapModeForScreen === 'hard' ? wrapWidth : Infinity,
+    wrapModeForScreen,
+  );
+
+  const itemLines = state.todos.flatMap((todo, idx) => {
     const hasText = Boolean(todo.text && todo.text.trim() !== '');
-    const text = hasText ? todo.text : '{gray-fg}<type todo...>{/gray-fg}';
-    const cursor = idx === state.activeIndex ? '▏' : '';
-    const uiText = cursor ? `${text}${cursor}` : text;
     const marker = idx === state.activeIndex ? '▸' : ' ';
-    const line = `${marker} ${formatStatusToken(token, effectiveBrackets)}${uiText}`;
-    return idx === state.activeIndex ? `{inverse}${line}{/inverse}` : line;
+    const token = getToken(state, tokens, idx);
+    const firstPrefix = `${marker} ${formatStatusToken(token, effectiveBrackets)}`;
+    const indentPrefix = repeat(' ', visibleLength(firstPrefix) + state.wrapIndent);
+    let wrapped = wrapItemText(
+      hasText ? todo.text : '<type todo...>',
+      wrapWidth,
+      firstPrefix,
+      indentPrefix,
+      wrapModeForScreen,
+      state.wrapIndent,
+    );
+
+    if (!hasText) {
+      wrapped = wrapped.map((line) => line.replace('<type todo...>', '{gray-fg}<type todo...>{/gray-fg}'));
+    }
+
+    if (idx === state.activeIndex) {
+      const lastIdx = wrapped.length - 1;
+      wrapped[lastIdx] = `${wrapped[lastIdx]}▏`;
+      wrapped = wrapped.map((line) => `{inverse}${line}{/inverse}`);
+    }
+
+    return wrapped;
   });
-  return [header, ...lines].join('\n');
+
+  const assembled = [...headerLines, '', ...itemLines];
+  if (!state.frameEnabled || state.frameStyle === 'none') {
+    return assembled.join('\n');
+  }
+
+  return wrapAndFrame(assembled, {
+    frameEnabled: state.frameEnabled,
+    frameStyle: state.frameStyle,
+    framePaddingX: state.framePaddingX,
+    framePaddingY: state.framePaddingY,
+  });
 }
 
 function applyCount(state, newN) {
@@ -476,20 +768,35 @@ function main() {
   let loadSelection = 0;
   let savedPlans = [];
 
+  let helpBox;
+  let helpOpen = false;
+
   const initialStorage = getStorageDir();
   const initialStatusMessage = initialStorage.error
     ? `Storage unavailable: ${initialStorage.error.message}`
     : undefined;
 
-  function setStatus(msg) {
-    status.setContent(` ${msg}`);
+  function formatStatusLine() {
+    const total = state.todos.length;
+    const active = total ? state.activeIndex + 1 : 0;
+    const doneCount = state.todos.filter((todo) => todo.done).length;
+    const doing = state.inProgressIndex !== null ? 1 : 0;
+    const open = Math.max(0, total - doneCount - doing);
+    const preset = getPreset(state);
+    const dirtyMark = state.isDirty ? '*' : ' ';
+    return `Active: ${active}/${total}  Open: ${open} | Doing: ${doing} | Done: ${doneCount}  Preset: ${preset.label}  Dirty: ${dirtyMark}`;
   }
 
-  function formatStatusLine() {
-    const progress = state.inProgressIndex !== null ? state.inProgressIndex + 1 : '-';
-    const preset = getPreset(state);
-    const brackets = getEffectiveBrackets(state, preset) ? 'on' : 'off';
-    return `Active: ${state.activeIndex + 1}/${state.todos.length}, In progress: ${progress}, Preset: ${preset.label}, Brackets: ${brackets}`;
+  function setStatus(msg) {
+    const base = formatStatusLine();
+    const text = msg ? `${msg} | ${base}` : base;
+    status.setContent(` ${text}`);
+  }
+
+  function markDirty() {
+    if (!state.isDirty) {
+      state.isDirty = true;
+    }
   }
 
   function ensureActiveVisible() {
@@ -502,7 +809,11 @@ function main() {
   }
 
   function refreshScreen(message) {
-    outputBox.setContent(renderScreen(state));
+    const estimatedBoxWidth = typeof outputBox.width === 'number'
+      ? outputBox.width
+      : Math.floor(screen.width * 0.9);
+    const contentWidth = Math.max(20, estimatedBoxWidth - 2);
+    outputBox.setContent(renderScreen(state, contentWidth));
     ensureActiveVisible();
     if (message) {
       setStatus(message);
@@ -533,17 +844,20 @@ function main() {
     if (state.inProgressIndex === state.activeIndex) {
       state.inProgressIndex = null;
     }
+    markDirty();
     refreshScreen(`Set OPEN: ${state.activeIndex + 1}`);
   }
 
   function toggleInProgress() {
     if (state.inProgressIndex === state.activeIndex) {
       state.inProgressIndex = null;
+      markDirty();
       refreshScreen(`Cleared IN_PROGRESS: ${state.activeIndex + 1}`);
       return;
     }
     state.inProgressIndex = state.activeIndex;
     state.todos[state.activeIndex].done = false;
+    markDirty();
     refreshScreen(`Set IN_PROGRESS: ${state.activeIndex + 1}`);
   }
 
@@ -554,14 +868,17 @@ function main() {
       if (state.inProgressIndex === state.activeIndex) {
         state.inProgressIndex = null;
       }
+      markDirty();
       refreshScreen(`Set DONE: ${state.activeIndex + 1}`);
       return;
     }
+    markDirty();
     refreshScreen(`Cleared DONE: ${state.activeIndex + 1}`);
   }
 
   function startNewPlan() {
     state = initState();
+    state.isDirty = false;
     closeMenu();
     closeLoadOverlay();
     refreshScreen(`New plan ${state.id}`);
@@ -570,6 +887,7 @@ function main() {
   function handleSavePlan() {
     const result = savePlan(state);
     if (result.ok) {
+      state.isDirty = false;
       refreshScreen(`Saved ${state.id}`);
       return;
     }
@@ -583,6 +901,7 @@ function main() {
     if (state.inProgressIndex !== null && state.inProgressIndex >= state.todos.length) {
       state.inProgressIndex = null;
     }
+    state.isDirty = false;
   }
 
   function handleLoadFile(filePath) {
@@ -623,6 +942,21 @@ function main() {
       { type: 'count', selectable: true },
       { type: 'section', text: 'Display' },
       { type: 'brackets', selectable: true },
+      { type: 'spacer' },
+      { type: 'section', text: 'Frame' },
+      { type: 'frameStyle', key: 'none', selectable: true },
+      { type: 'frameStyle', key: 'ascii', selectable: true },
+      { type: 'frameStyle', key: 'single', selectable: true },
+      { type: 'frameStyle', key: 'double', selectable: true },
+      { type: 'framePaddingX', selectable: true },
+      { type: 'framePaddingY', selectable: true },
+      { type: 'spacer' },
+      { type: 'section', text: 'Wrap' },
+      { type: 'wrapMode', key: 'off', selectable: true },
+      { type: 'wrapMode', key: 'soft', selectable: true },
+      { type: 'wrapMode', key: 'hard', selectable: true },
+      { type: 'wrapWidth', selectable: true },
+      { type: 'wrapIndent', selectable: true },
       { type: 'spacer' },
       { type: 'section', text: 'Symbol Presets' },
       ...Object.keys(PRESETS).map((key) => ({ type: 'preset', key, selectable: true })),
@@ -672,6 +1006,25 @@ function main() {
         const currentPreset = getPreset(state);
         const effective = getEffectiveBrackets(state, currentPreset) ? 'an' : 'aus';
         line = `Klammern anzeigen: ${options}  (aktuell: ${effective})`;
+      } else if (item.type === 'frameStyle') {
+        const isActive = item.key === 'none'
+          ? !state.frameEnabled
+          : state.frameEnabled && state.frameStyle === item.key;
+        const radio = isActive ? '(x)' : '( )';
+        const label = item.key === 'none' ? 'off' : FRAME_STYLES[item.key].label;
+        line = `${radio} Frame ${label}`;
+      } else if (item.type === 'framePaddingX') {
+        line = `Padding X: ${state.framePaddingX} (←/→)`;
+      } else if (item.type === 'framePaddingY') {
+        line = `Padding Y: ${state.framePaddingY} (←/→)`;
+      } else if (item.type === 'wrapMode') {
+        const radio = state.wrapMode === item.key ? '(x)' : '( )';
+        line = `${radio} Wrap ${item.key}`;
+      } else if (item.type === 'wrapWidth') {
+        const suffix = state.wrapMode === 'hard' ? '' : ' (nur hard)';
+        line = `Hard width: ${state.wrapWidth}${suffix} (←/→)`;
+      } else if (item.type === 'wrapIndent') {
+        line = `Indent: ${state.wrapIndent} (←/→)`;
       } else if (item.type === 'preset') {
         const preset = PRESETS[item.key];
         const radio = state.presetKey === item.key ? '(x)' : '( )';
@@ -750,6 +1103,7 @@ function main() {
       const result = applyCount(state, state.todos.length + delta);
       if (result.changed) {
         const message = result.trimmed ? `Trimmed to ${result.count}` : `Count: ${result.count}`;
+        markDirty();
         refreshScreen(message);
       }
       renderMenu();
@@ -761,8 +1115,71 @@ function main() {
       const changed = state.showBrackets !== nextValue;
       state.showBrackets = nextValue;
       if (changed) {
+        markDirty();
         const effective = getEffectiveBrackets(state, getPreset(state)) ? 'on' : 'off';
         refreshScreen(`Brackets: ${effective}`);
+      }
+      renderMenu();
+      return;
+    }
+
+    if (selected.type === 'framePaddingX') {
+      const next = clamp(state.framePaddingX + delta, 0, 4);
+      if (next !== state.framePaddingX) {
+        state.framePaddingX = next;
+        markDirty();
+        refreshScreen(`Padding X: ${next}`);
+      }
+      renderMenu();
+      return;
+    }
+
+    if (selected.type === 'framePaddingY') {
+      const next = clamp(state.framePaddingY + delta, 0, 2);
+      if (next !== state.framePaddingY) {
+        state.framePaddingY = next;
+        markDirty();
+        refreshScreen(`Padding Y: ${next}`);
+      }
+      renderMenu();
+      return;
+    }
+
+    if (selected.type === 'wrapMode') {
+      const order = ['off', 'soft', 'hard'];
+      const idx = order.indexOf(state.wrapMode);
+      const nextIdx = clamp(idx + delta, 0, order.length - 1);
+      const nextMode = order[nextIdx];
+      if (nextMode !== state.wrapMode) {
+        state.wrapMode = nextMode;
+        markDirty();
+        refreshScreen(`Wrap: ${nextMode}`);
+      }
+      renderMenu();
+      return;
+    }
+
+    if (selected.type === 'wrapWidth') {
+      if (state.wrapMode !== 'hard') {
+        renderMenu();
+        return;
+      }
+      const next = clamp(state.wrapWidth + (delta * 5), 60, 140);
+      if (next !== state.wrapWidth) {
+        state.wrapWidth = next;
+        markDirty();
+        refreshScreen(`Hard width: ${next}`);
+      }
+      renderMenu();
+      return;
+    }
+
+    if (selected.type === 'wrapIndent') {
+      const next = clamp(state.wrapIndent + delta, 2, 8);
+      if (next !== state.wrapIndent) {
+        state.wrapIndent = next;
+        markDirty();
+        refreshScreen(`Indent: ${next}`);
       }
       renderMenu();
     }
@@ -776,6 +1193,7 @@ function main() {
 
     if (selected.type === 'preset') {
       if (applyPreset(state, selected.key)) {
+        markDirty();
         refreshScreen(`Preset: ${PRESETS[selected.key].label}`);
       }
       renderMenu();
@@ -785,7 +1203,39 @@ function main() {
     if (selected.type === 'brackets') {
       state.showBrackets = !state.showBrackets;
       const effective = getEffectiveBrackets(state, getPreset(state)) ? 'on' : 'off';
+      markDirty();
       refreshScreen(`Brackets: ${effective}`);
+      renderMenu();
+      return;
+    }
+
+    if (selected.type === 'frameStyle') {
+      if (selected.key === 'none') {
+        if (state.frameEnabled) {
+          state.frameEnabled = false;
+          markDirty();
+          refreshScreen('Frame off');
+        }
+        renderMenu();
+        return;
+      }
+      const nextStyle = coerceFrameStyle(selected.key);
+      if (nextStyle !== state.frameStyle || !state.frameEnabled) {
+        state.frameEnabled = true;
+        state.frameStyle = nextStyle;
+        markDirty();
+        refreshScreen(`Frame: ${FRAME_STYLES[nextStyle].label}`);
+      }
+      renderMenu();
+      return;
+    }
+
+    if (selected.type === 'wrapMode') {
+      if (state.wrapMode !== selected.key) {
+        state.wrapMode = selected.key;
+        markDirty();
+        refreshScreen(`Wrap: ${selected.key}`);
+      }
       renderMenu();
       return;
     }
@@ -793,6 +1243,7 @@ function main() {
     if (selected.type === 'header') {
       if (HEADER_STYLES[selected.key]) {
         state.headerStyleKey = selected.key;
+        markDirty();
         refreshScreen('Header style updated');
       }
       renderMenu();
@@ -801,6 +1252,7 @@ function main() {
 
     if (selected.type === 'action' && selected.id === 'refresh') {
       state.generatedAt = new Date();
+      markDirty();
       refreshScreen('Timestamp refreshed');
       renderMenu();
     }
@@ -886,6 +1338,55 @@ function main() {
     refreshScreen();
   }
 
+  function buildHelpOverlay() {
+    helpBox = blessed.box({
+      parent: screen,
+      top: 'center',
+      left: 'center',
+      width: '70%',
+      height: '50%',
+      border: 'line',
+      label: ' Help ',
+      tags: true,
+      keys: true,
+      mouse: true,
+      hidden: true,
+      scrollable: true,
+      alwaysScroll: true,
+      scrollbar: { ch: ' ', inverse: true },
+    });
+  }
+
+  function renderHelpOverlay() {
+    if (!helpBox) return;
+    const lines = [
+      'Tab=Menu · F1=Help · F2=New · F4=Copy · F5=Print · F6=Save · F7=Load',
+      '↑↓ select · Enter next · Shift+Enter newline · Backspace delete',
+      'F8 open · F9 in progress · F10 done',
+      'Brackets on/off · Frame on/off · Wrap mode/width/indent (Tab menu)',
+      'ESC/F1 closes · Ctrl+C/Ctrl+Q exits',
+    ];
+    helpBox.setContent(lines.join('\n'));
+    screen.render();
+  }
+
+  function openHelpOverlay() {
+    if (!helpBox) buildHelpOverlay();
+    helpOpen = true;
+    helpBox.show();
+    helpBox.focus();
+    renderHelpOverlay();
+    setStatus('Help');
+    screen.render();
+  }
+
+  function closeHelpOverlay() {
+    if (!helpOpen) return;
+    helpOpen = false;
+    if (helpBox) helpBox.hide();
+    refreshScreen();
+  }
+
   function moveLoadSelection(delta) {
     if (!loadOpen) return;
     if (!savedPlans.length) {
@@ -932,6 +1433,20 @@ function main() {
   screen.on('keypress', async (ch, key) => {
     if (key && ((key.ctrl && key.name === 'c') || ((key.ctrl || key.meta) && key.name === 'q'))) {
       exit();
+      return;
+    }
+
+    if (helpOpen) {
+      if (key && (key.name === 'escape' || key.name === 'f1')) {
+        closeHelpOverlay();
+      }
+      return;
+    }
+
+    if (key && key.name === 'f1') {
+      closeMenu();
+      closeLoadOverlay();
+      openHelpOverlay();
       return;
     }
 
@@ -1054,10 +1569,19 @@ function main() {
       return;
     }
 
+    if (key && key.name === 'enter' && key.shift) {
+      const todo = state.todos[state.activeIndex];
+      todo.text = `${todo.text}\n`;
+      markDirty();
+      refreshScreen();
+      return;
+    }
+
     if (key && key.name === 'enter') {
       if (state.activeIndex === state.todos.length - 1 && state.todos.length < 50) {
         state.todos.push({ text: '', done: false });
         state.activeIndex = state.todos.length - 1;
+        markDirty();
         refreshScreen(`Added item ${state.activeIndex + 1}`);
         return;
       }
@@ -1069,6 +1593,7 @@ function main() {
       const todo = state.todos[state.activeIndex];
       if (todo.text.length > 0) {
         todo.text = todo.text.slice(0, -1);
+        markDirty();
         refreshScreen();
       }
       return;
@@ -1079,6 +1604,7 @@ function main() {
       if (res.ok) {
         const todo = state.todos[state.activeIndex];
         todo.text = `${todo.text}${res.text}`;
+        markDirty();
         refreshScreen('Pasted from clipboard');
       } else {
         setStatus('Clipboard read failed; paste unavailable');
@@ -1090,6 +1616,7 @@ function main() {
     if (ch && ch.length === 1 && (!key || (!key.ctrl && !key.meta))) {
       const todo = state.todos[state.activeIndex];
       todo.text = `${todo.text}${ch}`;
+      markDirty();
       refreshScreen();
     }
   });
