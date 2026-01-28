@@ -1723,7 +1723,8 @@ function main() {
       return;
     }
 
-    if (ch && ch.length === 1 && (!key || (!key.ctrl && !key.meta))) {
+    // Text input: ignore control characters like \n, \r, \t
+    if (ch && ch.length === 1 && ch !== '\n' && ch !== '\r' && ch !== '\t' && (!key || (!key.ctrl && !key.meta))) {
       const todo = state.todos[state.activeIndex];
       todo.text = `${todo.text}${ch}`;
       markDirty();
