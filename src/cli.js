@@ -211,9 +211,8 @@ function main() {
     border: 'line',
     scrollable: true,
     alwaysScroll: true,
-    keys: true,
+    keys: false,
     mouse: true,
-    vi: true,
     tags: true,
     scrollbar: { ch: ' ', inverse: true },
   });
@@ -493,11 +492,11 @@ function main() {
         closeMenu();
         return;
       }
-      if (key.name === 'up' || key.name === 'k') {
+      if (key.name === 'up' || ((key.meta || key.ctrl) && key.name === 'k')) {
         moveMenuSelection(-1);
         return;
       }
-      if (key.name === 'down' || key.name === 'j') {
+      if (key.name === 'down' || ((key.meta || key.ctrl) && key.name === 'j')) {
         moveMenuSelection(1);
         return;
       }
@@ -521,12 +520,12 @@ function main() {
       return;
     }
 
-    if (key && (key.name === 'up' || key.name === 'k')) {
+    if (key && (key.name === 'up' || ((key.meta || key.ctrl) && key.name === 'k'))) {
       changeActive(-1);
       return;
     }
 
-    if (key && (key.name === 'down' || key.name === 'j')) {
+    if (key && (key.name === 'down' || ((key.meta || key.ctrl) && key.name === 'j'))) {
       changeActive(1);
       return;
     }
