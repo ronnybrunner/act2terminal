@@ -211,7 +211,7 @@ function normalizeState(data = {}) {
   const frameStyle = frameStyleRaw;
   const framePaddingX = clamp(Math.round(safeNumber(data.framePaddingX, DEFAULT_FRAME_PADDING_X)), 0, 8);
   const framePaddingY = clamp(Math.round(safeNumber(data.framePaddingY, DEFAULT_FRAME_PADDING_Y)), 0, 4);
-  const frameExportMode = ['same', 'ascii-only', 'off'].includes(data.frameExportMode)
+  const frameExportMode = ['same', 'ascii-only', 'off', 'markdown'].includes(data.frameExportMode)
     ? data.frameExportMode
     : DEFAULT_FRAME_EXPORT_MODE;
 
@@ -980,11 +980,19 @@ function main() {
 
   async function copyTodos() {
     const frameMode = state.frameExportMode || 'same';
-    const plain = renderPlain(state, { frameMode });
+    // For markdown mode, render with frame then wrap in code block
+    const effectiveFrameMode = frameMode === 'markdown' ? 'same' : frameMode;
+    let plain = renderPlain(state, { frameMode: effectiveFrameMode });
+
+    // Wrap in markdown code block for web compatibility
+    if (frameMode === 'markdown') {
+      plain = '```\n' + plain + '\n```';
+    }
+
     const plainForClipboard = plain.replace(/\n/g, '\r\n');
     const res = await writeClipboard(plainForClipboard);
     if (res.ok) {
-      const modeLabel = frameMode === 'ascii-only' ? 'ascii' : frameMode;
+      const modeLabel = frameMode;
       setStatus(`Copied ✓ (F4) [Frame: ${modeLabel}]`);
     } else {
       osc52Copy(plain);
@@ -1082,10 +1090,11 @@ function main() {
       } else if (item.type === 'framePaddingY') {
         line = `Padding Y: ${state.framePaddingY} (←/→)`;
       } else if (item.type === 'frameExport') {
-        const modes = ['same', 'ascii-only', 'off'];
+        const modes = ['same', 'ascii-only', 'markdown', 'off'];
         const labels = {
           same: 'same',
-          'ascii-only': 'ascii-only',
+          'ascii-only': 'ascii',
+          markdown: 'markdown',
           off: 'off',
         };
         const parts = modes.map((m) => (state.frameExportMode === m ? `(x) ${labels[m]}` : `( ) ${labels[m]}`));
@@ -1233,7 +1242,7 @@ function main() {
     }
 
     if (selected.type === 'frameExport') {
-      const order = ['same', 'ascii-only', 'off'];
+      const order = ['same', 'ascii-only', 'markdown', 'off'];
       const idx = order.indexOf(state.frameExportMode);
       const nextIdx = clamp(idx + delta, 0, order.length - 1);
       const next = order[nextIdx];
@@ -1328,7 +1337,7 @@ function main() {
     }
 
     if (selected.type === 'frameExport') {
-      const order = ['same', 'ascii-only', 'off'];
+      const order = ['same', 'ascii-only', 'markdown', 'off'];
       const idx = order.indexOf(state.frameExportMode);
       const next = order[(idx + 1) % order.length];
       if (next !== state.frameExportMode) {
