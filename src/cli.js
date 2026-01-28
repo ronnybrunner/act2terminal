@@ -489,9 +489,18 @@ function wrapItemText(text, totalWidth, firstPrefix, indentPrefix, wrapMode, wra
   const firstWidth = useWrap ? totalWidth - visibleLength(firstPrefix) : Infinity;
   const otherWidth = useWrap ? totalWidth - indentWidth : Infinity;
 
-  const paragraphs = String(text || '').split('\n');
+  // Normalize line endings (handle \r\n and \r) and split
+  const normalizedText = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const paragraphs = normalizedText.split('\n');
+
+  // Ensure we always have at least one paragraph
+  if (paragraphs.length === 0) {
+    paragraphs.push('');
+  }
+
   paragraphs.forEach((segment, idx) => {
     if (idx === 0) {
+      // Main line always gets firstPrefix
       if (!useWrap) {
         lines.push(`${firstPrefix}${segment}`);
         return;
@@ -504,6 +513,7 @@ function wrapItemText(text, totalWidth, firstPrefix, indentPrefix, wrapMode, wra
       return;
     }
 
+    // Sublines (idx > 0) get bullet prefix
     const bulletPrefix = options.subBulletPrefix || baseIndentPrefix;
     const contPrefix = options.subContinuationPrefix || repeat(' ', visibleLength(bulletPrefix));
     const bulletFirstWidth = useWrap ? totalWidth - visibleLength(bulletPrefix) : Infinity;
@@ -524,6 +534,11 @@ function wrapItemText(text, totalWidth, firstPrefix, indentPrefix, wrapMode, wra
       lines.push(`${prefix}${part}`);
     });
   });
+
+  // Safety: ensure we always return at least one line
+  if (lines.length === 0) {
+    lines.push(firstPrefix);
+  }
 
   return lines;
 }
