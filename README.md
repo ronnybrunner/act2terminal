@@ -61,7 +61,8 @@ Tokens are padded to the preset max width so the UI and export align.
 Keybindings:
 
 - `Tab`: Open/close settings menu.
-- `Enter`: Move to the next item (adds a new item at the end up to 50).
+- `Enter`: Create a new todo directly below the current one (max 50 items).
+- `Shift+Enter`: Add a new line (subpoint) within the current todo.
 - `Up/Down` or `Ctrl/Alt + j/k`: Change active item.
 - `F8`: Set OPEN for the active item.
 - `F9`: Toggle "in progress" for the active item (only one at a time).

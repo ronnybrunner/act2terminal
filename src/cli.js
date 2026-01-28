@@ -1668,13 +1668,22 @@ function main() {
     }
 
     if (key && key.name === 'enter') {
-      if (state.activeIndex === state.todos.length - 1 && state.todos.length < 50) {
-        state.todos.push({ text: '', done: false });
-        state.activeIndex = state.todos.length - 1;
+      // Insert new todo AFTER activeIndex
+      if (state.todos.length < 50) {
+        const insertAt = state.activeIndex + 1;
+        state.todos.splice(insertAt, 0, { text: '', done: false });
+
+        // Shift inProgressIndex if it's at or after the insert position
+        if (state.inProgressIndex !== null && state.inProgressIndex >= insertAt) {
+          state.inProgressIndex += 1;
+        }
+
+        state.activeIndex = insertAt;
         markDirty();
-        refreshScreen(`Added item ${state.activeIndex + 1}`);
+        refreshScreen(`Added item ${insertAt + 1}`);
         return;
       }
+      // Max 50 items reached - just navigate
       changeActive(1);
       return;
     }
