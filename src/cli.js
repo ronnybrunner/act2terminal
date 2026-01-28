@@ -214,6 +214,7 @@ function normalizeState(data = {}) {
   const frameExportMode = ['same', 'ascii-only', 'off', 'markdown'].includes(data.frameExportMode)
     ? data.frameExportMode
     : DEFAULT_FRAME_EXPORT_MODE;
+  const updateVersion = clamp(Math.round(safeNumber(data.updateVersion, 0)), 0, 99);
 
   return {
     todos,
@@ -232,6 +233,7 @@ function normalizeState(data = {}) {
     framePaddingX,
     framePaddingY,
     frameExportMode,
+    updateVersion,
     isDirty: false,
   };
 }
@@ -279,6 +281,7 @@ function serializeState(state) {
     framePaddingX: state.framePaddingX,
     framePaddingY: state.framePaddingY,
     frameExportMode: state.frameExportMode,
+    updateVersion: state.updateVersion,
     todos: state.todos.map((todo) => ({ text: todo.text, done: todo.done })),
   };
 }
@@ -371,6 +374,7 @@ function initState() {
     framePaddingX: DEFAULT_FRAME_PADDING_X,
     framePaddingY: DEFAULT_FRAME_PADDING_Y,
     frameExportMode: DEFAULT_FRAME_EXPORT_MODE,
+    updateVersion: 0,
   });
 }
 
@@ -378,6 +382,13 @@ function buildHeader(state) {
   const style = HEADER_STYLES[state.headerStyleKey] || HEADER_STYLES.markdown;
   const id = state.id || '????';
   return `${style.prefix} ${id} (${formatDate(state.generatedAt)})`;
+}
+
+function buildUpdateLine(state) {
+  if (!state.updateVersion || state.updateVersion <= 0) {
+    return null;
+  }
+  return `Update ${state.updateVersion}`;
 }
 
 function getPreset(state) {
@@ -585,6 +596,7 @@ function wrapAndFrame(lines, opts) {
 
 function renderPlain(state, frameOptions = {}) {
   const header = buildHeader(state);
+  const updateLine = buildUpdateLine(state);
   const wrapWidth = state.wrapMode === 'hard' ? state.wrapWidth : Infinity;
   const headerLines = wrapHeaderLine(header, wrapWidth, state.wrapMode);
   const preset = getPreset(state);
@@ -610,7 +622,10 @@ function renderPlain(state, frameOptions = {}) {
     );
   });
 
-  const assembled = [...headerLines, '', ...itemLines];
+  // Build assembled lines: header, optional update line, empty line, items
+  const assembled = updateLine
+    ? [...headerLines, updateLine, '', ...itemLines]
+    : [...headerLines, '', ...itemLines];
   const frameMode = frameOptions.frameMode || 'same';
   let frameEnabled = state.frameEnabled;
   let frameStyle = state.frameStyle;
@@ -635,6 +650,7 @@ function renderPlain(state, frameOptions = {}) {
 
 function renderScreen(state, outputWidth) {
   const header = buildHeader(state);
+  const updateLine = buildUpdateLine(state);
   const preset = getPreset(state);
   const tokens = getDisplayTokens(preset);
   const effectiveBrackets = getEffectiveBrackets(state, preset);
@@ -689,7 +705,11 @@ function renderScreen(state, outputWidth) {
     return wrapped;
   });
 
-  const assembled = [...headerLines, '', ...itemLines];
+  // Build assembled lines: header, optional update line, empty line, items
+  const assembled = updateLine
+    ? [...headerLines, updateLine, '', ...itemLines]
+    : [...headerLines, '', ...itemLines];
+
   if (!state.frameEnabled || state.frameStyle === 'none') {
     return assembled.join('\n');
   }
@@ -1011,6 +1031,7 @@ function main() {
   function getMenuLayout() {
     return [
       { type: 'count', selectable: true },
+      { type: 'updateVersion', selectable: true },
       { type: 'section', text: 'Display' },
       { type: 'brackets', selectable: true },
       { type: 'spacer' },
@@ -1073,6 +1094,9 @@ function main() {
       let line = '';
       if (item.type === 'count') {
         line = `Anzahl Punkte: ${state.todos.length} (←/→)`;
+      } else if (item.type === 'updateVersion') {
+        const label = state.updateVersion > 0 ? `Update ${state.updateVersion}` : 'aus';
+        line = `Update-Version: ${label} (←/→)`;
       } else if (item.type === 'brackets') {
         const options = state.showBrackets ? '(x) an  ( ) aus' : '( ) an  (x) aus';
         const currentPreset = getPreset(state);
@@ -1187,6 +1211,18 @@ function main() {
         const message = result.trimmed ? `Trimmed to ${result.count}` : `Count: ${result.count}`;
         markDirty();
         refreshScreen(message);
+      }
+      renderMenu();
+      return;
+    }
+
+    if (selected.type === 'updateVersion') {
+      const next = clamp(state.updateVersion + delta, 0, 99);
+      if (next !== state.updateVersion) {
+        state.updateVersion = next;
+        markDirty();
+        const label = next > 0 ? `Update ${next}` : 'aus';
+        refreshScreen(`Update-Version: ${label}`);
       }
       renderMenu();
       return;
