@@ -11,14 +11,62 @@ const DEFAULT_PRESET = 'squares';
 const DEFAULT_HEADER_STYLE = 'markdown';
 
 const PRESETS = {
-  squares: { label: 'Squares', openToken: '□', inProgressToken: '■', doneToken: '✓' },
-  markdown: { label: 'Markdown', openToken: ' ', inProgressToken: '~', doneToken: 'x' },
-  arrows: { label: 'Arrows', openToken: ' ', inProgressToken: '>', doneToken: '✓' },
-  minimal: { label: 'Minimal', openToken: ' ', inProgressToken: '*', doneToken: '✓' },
-  pipeTree: { label: 'Pipe Tree', openToken: '| ', inProgressToken: '|> ', doneToken: '| ✓ ' },
-  asciiBranch: { label: 'ASCII Branch', openToken: '|- ', inProgressToken: '|> ', doneToken: '|✓ ' },
-  bullets: { label: 'Bullets', openToken: '• ', inProgressToken: '▸ ', doneToken: '✓ ' },
-  boxDrawing: { label: 'Box Drawing', openToken: '│ ', inProgressToken: '│▶ ', doneToken: '│✓ ' },
+  squares: {
+    label: 'Squares',
+    openToken: '□',
+    inProgressToken: '■',
+    doneToken: '✓',
+    supportsBrackets: true,
+  },
+  markdown: {
+    label: 'Markdown',
+    openToken: ' ',
+    inProgressToken: '~',
+    doneToken: 'x',
+    supportsBrackets: true,
+  },
+  arrows: {
+    label: 'Arrows',
+    openToken: ' ',
+    inProgressToken: '>',
+    doneToken: '✓',
+    supportsBrackets: true,
+  },
+  minimal: {
+    label: 'Minimal',
+    openToken: ' ',
+    inProgressToken: '*',
+    doneToken: '✓',
+    supportsBrackets: true,
+  },
+  pipeTree: {
+    label: 'Pipe Tree',
+    openToken: '| ',
+    inProgressToken: '|> ',
+    doneToken: '| ✓ ',
+    supportsBrackets: false,
+  },
+  asciiBranch: {
+    label: 'ASCII Branch',
+    openToken: '|- ',
+    inProgressToken: '|> ',
+    doneToken: '|✓ ',
+    supportsBrackets: false,
+  },
+  bullets: {
+    label: 'Bullets',
+    openToken: '• ',
+    inProgressToken: '▸ ',
+    doneToken: '✓ ',
+    supportsBrackets: false,
+  },
+  boxDrawing: {
+    label: 'Box Drawing',
+    openToken: '│ ',
+    inProgressToken: '│▶ ',
+    doneToken: '│✓ ',
+    supportsBrackets: false,
+  },
 };
 
 const HEADER_STYLES = {
@@ -90,6 +138,7 @@ function normalizeState(data = {}) {
     ? data.headerStyle
     : (HEADER_STYLES[data.headerStyleKey] ? data.headerStyleKey : DEFAULT_HEADER_STYLE);
   const id = data.id || generateId(generatedAt);
+  const showBrackets = typeof data.showBrackets === 'boolean' ? data.showBrackets : true;
 
   return {
     todos,
@@ -99,6 +148,7 @@ function normalizeState(data = {}) {
     presetKey,
     headerStyleKey,
     id,
+    showBrackets,
   };
 }
 
@@ -136,6 +186,7 @@ function serializeState(state) {
     presetKey: state.presetKey,
     headerStyle: state.headerStyleKey,
     inProgressIndex: state.inProgressIndex,
+    showBrackets: state.showBrackets,
     todos: state.todos.map((todo) => ({ text: todo.text, done: todo.done })),
   };
 }
@@ -219,6 +270,7 @@ function initState() {
     todos: Array.from({ length: DEFAULT_COUNT }, () => ({ text: '', done: false })),
     presetKey: DEFAULT_PRESET,
     headerStyle: DEFAULT_HEADER_STYLE,
+    showBrackets: true,
   });
 }
 
@@ -232,17 +284,21 @@ function getPreset(state) {
   return PRESETS[state.presetKey] || PRESETS.squares;
 }
 
-function getPaddedTokens(preset) {
-  const width = Math.max(
-    preset.openToken.length,
-    preset.inProgressToken.length,
-    preset.doneToken.length,
-  );
+function normalizeToken(token) {
+  return String(token ?? '').trimEnd();
+}
+
+function getDisplayTokens(preset) {
   return {
-    openToken: preset.openToken.padEnd(width, ' '),
-    inProgressToken: preset.inProgressToken.padEnd(width, ' '),
-    doneToken: preset.doneToken.padEnd(width, ' '),
+    openToken: normalizeToken(preset.openToken),
+    inProgressToken: normalizeToken(preset.inProgressToken),
+    doneToken: normalizeToken(preset.doneToken),
   };
+}
+
+function getEffectiveBrackets(state, preset) {
+  const supportsBrackets = preset.supportsBrackets !== false;
+  return Boolean(state.showBrackets && supportsBrackets);
 }
 
 function getToken(state, tokens, idx) {
@@ -252,20 +308,34 @@ function getToken(state, tokens, idx) {
   return tokens.openToken;
 }
 
+function formatStatusToken(token, effectiveBrackets) {
+  const core = normalizeToken(token);
+  if (effectiveBrackets) {
+    const bracketCore = core === '' ? ' ' : core;
+    return `[${bracketCore}] `;
+  }
+  const plainCore = core === '' ? '' : core;
+  return `${plainCore} `;
+}
+
 function renderPlain(state) {
   const header = buildHeader(state);
-  const tokens = getPaddedTokens(getPreset(state));
+  const preset = getPreset(state);
+  const tokens = getDisplayTokens(preset);
+  const effectiveBrackets = getEffectiveBrackets(state, preset);
   const lines = state.todos.map((todo, idx) => {
     const token = getToken(state, tokens, idx);
     const text = todo.text ? todo.text : '';
-    return `[${token}] ${text}`;
+    return `${formatStatusToken(token, effectiveBrackets)}${text}`;
   });
   return [header, '', ...lines].join('\n');
 }
 
 function renderScreen(state) {
   const header = buildHeader(state);
-  const tokens = getPaddedTokens(getPreset(state));
+  const preset = getPreset(state);
+  const tokens = getDisplayTokens(preset);
+  const effectiveBrackets = getEffectiveBrackets(state, preset);
   const lines = state.todos.map((todo, idx) => {
     const token = getToken(state, tokens, idx);
     const hasText = Boolean(todo.text && todo.text.trim() !== '');
@@ -273,7 +343,7 @@ function renderScreen(state) {
     const cursor = idx === state.activeIndex ? '▏' : '';
     const uiText = cursor ? `${text}${cursor}` : text;
     const marker = idx === state.activeIndex ? '▸' : ' ';
-    const line = `${marker} [${token}] ${uiText}`;
+    const line = `${marker} ${formatStatusToken(token, effectiveBrackets)}${uiText}`;
     return idx === state.activeIndex ? `{inverse}${line}{/inverse}` : line;
   });
   return [header, ...lines].join('\n');
@@ -418,7 +488,8 @@ function main() {
   function formatStatusLine() {
     const progress = state.inProgressIndex !== null ? state.inProgressIndex + 1 : '-';
     const preset = getPreset(state);
-    return `Active: ${state.activeIndex + 1}/${state.todos.length}, In progress: ${progress}, Preset: ${preset.label}`;
+    const brackets = getEffectiveBrackets(state, preset) ? 'on' : 'off';
+    return `Active: ${state.activeIndex + 1}/${state.todos.length}, In progress: ${progress}, Preset: ${preset.label}, Brackets: ${brackets}`;
   }
 
   function ensureActiveVisible() {
@@ -550,6 +621,8 @@ function main() {
   function getMenuLayout() {
     return [
       { type: 'count', selectable: true },
+      { type: 'section', text: 'Display' },
+      { type: 'brackets', selectable: true },
       { type: 'spacer' },
       { type: 'section', text: 'Symbol Presets' },
       ...Object.keys(PRESETS).map((key) => ({ type: 'preset', key, selectable: true })),
@@ -594,10 +667,23 @@ function main() {
       let line = '';
       if (item.type === 'count') {
         line = `Anzahl Punkte: ${state.todos.length} (←/→)`;
+      } else if (item.type === 'brackets') {
+        const options = state.showBrackets ? '(x) an  ( ) aus' : '( ) an  (x) aus';
+        const currentPreset = getPreset(state);
+        const effective = getEffectiveBrackets(state, currentPreset) ? 'an' : 'aus';
+        line = `Klammern anzeigen: ${options}  (aktuell: ${effective})`;
       } else if (item.type === 'preset') {
         const preset = PRESETS[item.key];
         const radio = state.presetKey === item.key ? '(x)' : '( )';
-        line = `${radio} ${preset.label} [${preset.openToken}] [${preset.inProgressToken}] [${preset.doneToken}]`;
+        const tokens = getDisplayTokens(preset);
+        const effective = getEffectiveBrackets(state, preset);
+        const preview = [
+          formatStatusToken(tokens.openToken, effective).trimEnd(),
+          formatStatusToken(tokens.inProgressToken, effective).trimEnd(),
+          formatStatusToken(tokens.doneToken, effective).trimEnd(),
+        ].join(' ');
+        const supportLabel = preset.supportsBrackets === false ? '· ohne Klammern' : '· Klammern';
+        line = `${radio} ${preset.label} ${preview} ${supportLabel}`;
       } else if (item.type === 'header') {
         const style = HEADER_STYLES[item.key];
         const radio = state.headerStyleKey === item.key ? '(x)' : '( )';
@@ -659,13 +745,27 @@ function main() {
     if (!menuOpen) return;
     const layout = getMenuLayout();
     const selected = getSelectedItem(layout);
-    if (!selected || selected.type !== 'count') return;
-    const result = applyCount(state, state.todos.length + delta);
-    if (result.changed) {
-      const message = result.trimmed ? `Trimmed to ${result.count}` : `Count: ${result.count}`;
-      refreshScreen(message);
+    if (!selected) return;
+    if (selected.type === 'count') {
+      const result = applyCount(state, state.todos.length + delta);
+      if (result.changed) {
+        const message = result.trimmed ? `Trimmed to ${result.count}` : `Count: ${result.count}`;
+        refreshScreen(message);
+      }
+      renderMenu();
+      return;
     }
-    renderMenu();
+
+    if (selected.type === 'brackets') {
+      const nextValue = delta > 0;
+      const changed = state.showBrackets !== nextValue;
+      state.showBrackets = nextValue;
+      if (changed) {
+        const effective = getEffectiveBrackets(state, getPreset(state)) ? 'on' : 'off';
+        refreshScreen(`Brackets: ${effective}`);
+      }
+      renderMenu();
+    }
   }
 
   function handleMenuEnter() {
@@ -678,6 +778,14 @@ function main() {
       if (applyPreset(state, selected.key)) {
         refreshScreen(`Preset: ${PRESETS[selected.key].label}`);
       }
+      renderMenu();
+      return;
+    }
+
+    if (selected.type === 'brackets') {
+      state.showBrackets = !state.showBrackets;
+      const effective = getEffectiveBrackets(state, getPreset(state)) ? 'on' : 'off';
+      refreshScreen(`Brackets: ${effective}`);
       renderMenu();
       return;
     }
