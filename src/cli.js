@@ -111,7 +111,7 @@ const HEADER_STYLES = {
   plain: { label: 'Actionplan <ID> (YYYY-MM-DD HH:mm)', prefix: 'Actionplan' },
 };
 
-const HELP_LINE = 'F1=Help, Tab=Menu, F2=New, F3=Subpoint, F4=Copy, F5=Print, F6=Save, F7=Load, ↑↓=Select, Enter=Next, F8=Open, F9=In progress, F10=Done, ESC/Ctrl+C/Ctrl+Q=Exit';
+const HELP_LINE = '{cyan-fg}F1{/}=Help {cyan-fg}Tab{/}=Menu {cyan-fg}F2{/}=New {cyan-fg}F4{/}=Copy {cyan-fg}F5{/}=Print {cyan-fg}F6{/}=Save {cyan-fg}F7{/}=Load {gray-fg}│{/} {cyan-fg}↑↓{/}=Nav {cyan-fg}Enter{/}=Add {gray-fg}│{/} {cyan-fg}F8{/}=Open {cyan-fg}F9{/}=Doing {cyan-fg}F10{/}=Done {gray-fg}│{/} {red-fg}ESC{/}=Exit';
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -804,6 +804,11 @@ function main() {
     left: 0,
     height: 1,
     width: '100%',
+    tags: true,
+    style: {
+      bg: 'black',
+      fg: 'white',
+    },
     content: ` ${HELP_LINE}`,
   });
 
@@ -827,7 +832,12 @@ function main() {
     keys: false,
     mouse: true,
     tags: true,
-    scrollbar: { ch: ' ', inverse: true },
+    label: ' {bold}{cyan-fg}✦ Actionplan{/cyan-fg}{/bold} ',
+    style: {
+      border: { fg: 'cyan' },
+      label: { fg: 'cyan', bold: true },
+    },
+    scrollbar: { ch: '│', track: { bg: 'black' }, style: { fg: 'cyan' } },
   });
 
   const status = blessed.box({
@@ -837,7 +847,11 @@ function main() {
     height: 1,
     width: '100%',
     tags: true,
-    content: ' Ready.',
+    style: {
+      bg: 'black',
+      fg: 'white',
+    },
+    content: ' {green-fg}●{/green-fg} Ready.',
   });
 
   let menuBox;
@@ -864,8 +878,8 @@ function main() {
     const doing = state.inProgressIndex !== null ? 1 : 0;
     const open = Math.max(0, total - doneCount - doing);
     const preset = getPreset(state);
-    const dirtyMark = state.isDirty ? '*' : ' ';
-    return `Active: ${active}/${total}  Open: ${open} | Doing: ${doing} | Done: ${doneCount}  Preset: ${preset.label}  Dirty: ${dirtyMark}`;
+    const dirtyMark = state.isDirty ? '{yellow-fg}●{/yellow-fg}' : '{green-fg}●{/green-fg}';
+    return `${dirtyMark} {bold}${active}{/bold}/${total} {gray-fg}│{/gray-fg} {white-fg}Open:{/white-fg} {bold}${open}{/bold} {gray-fg}│{/gray-fg} {yellow-fg}Doing:{/yellow-fg} {bold}${doing}{/bold} {gray-fg}│{/gray-fg} {green-fg}Done:{/green-fg} {bold}${doneCount}{/bold} {gray-fg}│{/gray-fg} {cyan-fg}${preset.label}{/cyan-fg}`;
   }
 
   function setStatus(msg) {
@@ -896,11 +910,7 @@ function main() {
     const contentWidth = Math.max(20, estimatedBoxWidth - 2);
     outputBox.setContent(renderScreen(state, contentWidth));
     ensureActiveVisible();
-    if (message) {
-      setStatus(message);
-    } else {
-      setStatus(formatStatusLine());
-    }
+    setStatus(message);
     screen.render();
   }
 
@@ -1087,7 +1097,7 @@ function main() {
     let selectableIndex = -1;
     const lines = layout.map((item) => {
       if (item.type === 'spacer') return '';
-      if (item.type === 'section') return `{bold}${item.text}{/bold}`;
+      if (item.type === 'section') return `{magenta-fg}{bold}━━ ${item.text} ━━{/bold}{/magenta-fg}`;
       if (item.selectable) selectableIndex += 1;
       const isSelected = item.selectable && selectableIndex === menuSelection;
 
@@ -1166,11 +1176,19 @@ function main() {
       width: '70%',
       height: '70%',
       border: 'line',
-      label: ' Settings ',
+      label: ' {bold}{magenta-fg}⚙ Settings{/magenta-fg}{/bold} ',
       tags: true,
       keys: true,
       mouse: true,
       hidden: true,
+      scrollable: true,
+      alwaysScroll: true,
+      style: {
+        border: { fg: 'magenta' },
+        label: { fg: 'magenta', bold: true },
+        bg: 'black',
+      },
+      scrollbar: { ch: '│', style: { fg: 'magenta' } },
     });
   }
 
@@ -1426,14 +1444,19 @@ function main() {
       width: '70%',
       height: '70%',
       border: 'line',
-      label: ' Load plan ',
+      label: ' {bold}{blue-fg}📂 Load Plan{/blue-fg}{/bold} ',
       tags: true,
       keys: true,
       mouse: true,
       scrollable: true,
       alwaysScroll: true,
       hidden: true,
-      scrollbar: { ch: ' ', inverse: true },
+      style: {
+        border: { fg: 'blue' },
+        label: { fg: 'blue', bold: true },
+        bg: 'black',
+      },
+      scrollbar: { ch: '│', style: { fg: 'blue' } },
     });
   }
 
@@ -1491,25 +1514,40 @@ function main() {
       width: '70%',
       height: '50%',
       border: 'line',
-      label: ' Help ',
+      label: ' {bold}{yellow-fg}? Help{/yellow-fg}{/bold} ',
       tags: true,
       keys: true,
       mouse: true,
       hidden: true,
       scrollable: true,
       alwaysScroll: true,
-      scrollbar: { ch: ' ', inverse: true },
+      style: {
+        border: { fg: 'yellow' },
+        label: { fg: 'yellow', bold: true },
+        bg: 'black',
+      },
+      scrollbar: { ch: '│', style: { fg: 'yellow' } },
     });
   }
 
   function renderHelpOverlay() {
     if (!helpBox) return;
     const lines = [
-      'Tab=Menu · F1=Help · F2=New · F3=Subpoint · F4=Copy · F5=Print · F6=Save · F7=Load',
-      '↑↓ select · Enter next · F3 subpoint · Backspace delete',
-      'F8 open · F9 in progress · F10 done',
-      'Brackets on/off · Frame on/off · Wrap mode/width/indent (Tab menu)',
-      'ESC/F1 closes · Ctrl+C/Ctrl+Q exits',
+      '{yellow-fg}{bold}━━ Navigation ━━{/bold}{/yellow-fg}',
+      '  {cyan-fg}↑/↓{/cyan-fg}        Select item        {cyan-fg}Enter{/cyan-fg}   Add new todo',
+      '  {cyan-fg}Tab{/cyan-fg}        Open settings      {cyan-fg}ESC{/cyan-fg}     Exit / Close',
+      '',
+      '{yellow-fg}{bold}━━ Editing ━━{/bold}{/yellow-fg}',
+      '  {cyan-fg}F2{/cyan-fg}         New plan           {cyan-fg}F3{/cyan-fg}      Add subpoint',
+      '  {cyan-fg}Backspace{/cyan-fg}  Delete character   {cyan-fg}Ctrl+V{/cyan-fg}  Paste',
+      '',
+      '{yellow-fg}{bold}━━ Status ━━{/bold}{/yellow-fg}',
+      '  {cyan-fg}F8{/cyan-fg}         Set {white-fg}OPEN{/white-fg}          {cyan-fg}F9{/cyan-fg}      Set {yellow-fg}IN PROGRESS{/yellow-fg}',
+      '  {cyan-fg}F10{/cyan-fg}        Set {green-fg}DONE{/green-fg}',
+      '',
+      '{yellow-fg}{bold}━━ File ━━{/bold}{/yellow-fg}',
+      '  {cyan-fg}F4{/cyan-fg}         Copy to clipboard  {cyan-fg}F5{/cyan-fg}      Print & exit',
+      '  {cyan-fg}F6{/cyan-fg}         Save plan          {cyan-fg}F7{/cyan-fg}      Load plan',
     ];
     helpBox.setContent(lines.join('\n'));
     screen.render();
